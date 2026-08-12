@@ -1,0 +1,5 @@
+Artificial           intelligence is a             field of computer science.
+
+Machine learning allows computers to learn from data.
+
+Deep learning uses neural networks to learn     complex patterns.
