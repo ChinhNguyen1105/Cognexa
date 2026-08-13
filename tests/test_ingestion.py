@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from src.core.exceptions import DocumentNotFoundError
-from src.ingestion.loader import load_document
+from cognexa.core.exceptions import DocumentNotFoundError
+from cognexa.ingestion.loader import load_document
 
 
 def test_load_document(tmp_path: Path):

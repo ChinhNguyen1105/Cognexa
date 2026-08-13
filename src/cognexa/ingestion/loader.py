@@ -1,12 +1,12 @@
 from pathlib import Path
 
-from src.core.config import SUPPORTED_EXTENSIONS
-from src.core.exceptions import (
+from cognexa.core.config import SUPPORTED_EXTENSIONS
+from cognexa.core.exceptions import (
     DocumentNotFoundError,
     UnsupportedDocumentError,
 )
-from src.documents.models import Document
-from src.ingestion.reader import read_text_file
+from cognexa.documents.models import Document
+from cognexa.ingestion.reader import read_text_file
 
 
 def load_document(path: Path) -> Document:

@@ -18,3 +18,25 @@
           Document
              │
              └───────────────► Processed Document
+
+
+v0.2 - typer 
+
+                    Cognexa V0.2
+
+                 CLI Application
+                       │
+                       ▼
+              cognexa process FILE
+                       │
+                       ▼
+              DocumentProcessor
+                       │
+             ┌─────────┴─────────┐
+             ▼                   ▼
+        Ingestion             Processing
+        load_document()       process_content()
+             │                   │
+             └─────────┬─────────┘
+                       ▼
+                   Document

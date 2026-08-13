@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from src.services.document_processor import process_document
+from cognexa.services.document_processor import process_document
 
 
 def test_process_document_pipeline(tmp_path: Path):

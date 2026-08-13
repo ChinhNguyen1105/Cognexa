@@ -1,4 +1,4 @@
-from src.documents.models import Document
+from cognexa.documents.models import Document
 
 
 def parse(document: Document) -> str:

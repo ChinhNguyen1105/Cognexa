@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from src.core.config import DEFAULT_ENCODING
-from src.core.exceptions import DocumentReadError
+from cognexa.core.config import DEFAULT_ENCODING
+from cognexa.core.exceptions import DocumentReadError
 
 
 def read_text_file(path: Path) -> str:

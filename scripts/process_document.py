@@ -1,8 +1,8 @@
 import sys
 from pathlib import Path
 
-from src.core.exceptions import CognexaError
-from src.services.document_processor import process_document
+from cognexa.core.exceptions import CognexaError
+from cognexa.services.document_processor import process_document
 
 
 def main() -> int:

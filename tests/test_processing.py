@@ -1,4 +1,4 @@
-from src.processing.processor import process
+from cognexa.processing.processor import process
 
 
 def test_process_document():

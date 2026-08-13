@@ -1,5 +1,5 @@
-from src.processing.cleaner import clean_text
-from src.processing.parser import parse
+from cognexa.processing.cleaner import clean_text
+from cognexa.processing.parser import parse
 
 
 def process(text: str) -> str:

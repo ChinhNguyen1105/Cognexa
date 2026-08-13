@@ -1,8 +1,8 @@
 from pathlib import Path
 
-from src.documents.models import Document
-from src.ingestion.loader import load_document
-from src.processing.processor import process_document_content
+from cognexa.documents.models import Document
+from cognexa.ingestion.loader import load_document
+from cognexa.processing.processor import process_document_content
 
 
 def process_document(path: Path) -> Document:
