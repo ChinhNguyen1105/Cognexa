@@ -9,6 +9,7 @@ description = "Cognexa - Document Processing Intelligence"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "typer",
+    "scikit-learn",
 ]
 
 [project.optional-dependencies]
