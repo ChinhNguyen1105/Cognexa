@@ -2,7 +2,6 @@ from typer.testing import CliRunner
 
 from cognexa.cli.main import app
 
-
 runner = CliRunner()
 
 
@@ -19,4 +18,4 @@ def test_version():
     result = runner.invoke(app, ["version"])
 
     assert result.exit_code == 0
-    assert "Cognexa 0.1.0" in result.stdout
+    assert "Cognexa 0.2.0" in result.stdout
