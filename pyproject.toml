@@ -4,12 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cognexa"
-version = "0.2.0"
-description = "Cognexa - Document Processing Intelligence"
+version = "0.4.0"
+description = "Cognexa - Neural Document Intelligence"
 requires-python = ">=3.12,<3.13"
+
 dependencies = [
     "typer",
     "scikit-learn",
+    "torch",
 ]
 
 [project.optional-dependencies]
