@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from cognexa.ml.classifier import DocumentClassifier
-from cognexa.ml.features import TextFeatureExtractor
+from cognexa.ml.classical.classifier import DocumentClassifier
+from cognexa.ml.classical.features import TextFeatureExtractor
 from cognexa.ml.model import load_model, save_model
 
 

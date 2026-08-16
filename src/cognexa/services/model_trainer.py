@@ -2,7 +2,7 @@ from pathlib import Path
 
 from cognexa.ml.dataset import load_dataset
 from cognexa.ml.model import save_model
-from cognexa.ml.trainer import DocumentTrainer
+from cognexa.ml.classical.trainer import DocumentTrainer
 
 
 def train_model(

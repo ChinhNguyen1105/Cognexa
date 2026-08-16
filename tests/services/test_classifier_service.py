@@ -7,7 +7,7 @@ def test_classify_text(tmp_path: Path):
     model_path = tmp_path / "model.pkl"
 
     from cognexa.ml.model import save_model
-    from cognexa.ml.trainer import DocumentTrainer
+    from cognexa.ml.classical.trainer import DocumentTrainer
 
     trainer = DocumentTrainer()
 

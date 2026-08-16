@@ -2,6 +2,7 @@ from pathlib import Path
 
 import typer
 
+from cognexa.cli.neural.commands import app as neural_app
 from cognexa.core.config import APP_NAME, APP_VERSION
 from cognexa.core.exceptions import DocumentNotFoundError
 from cognexa.core.logging import get_logger, setup_logging
@@ -16,6 +17,12 @@ logger = get_logger(__name__)
 app = typer.Typer(
     name="cognexa",
     help="Cognexa - Document Processing Intelligence",
+)
+
+# V0.4 - Neural commands
+app.add_typer(
+    neural_app,
+    name="neural",
 )
 
 
@@ -41,7 +48,8 @@ def classify(
         logger.error("%s", exc)
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1)
-    
+
+
 @app.command()
 def train(
     dataset: str = "data/samples/datasets/documents.csv",
@@ -55,6 +63,7 @@ def train(
 
     typer.echo(f"Model saved to: {model}")
 
+
 @app.command()
 def process(file: str):
     """Process a document."""
@@ -62,7 +71,7 @@ def process(file: str):
         logger.info("Processing document: %s", file)
 
         document = process_document(Path(file))
-        print(document.content)
+        typer.echo(document.content)
 
     except DocumentNotFoundError as exc:
         logger.error("%s", exc)
@@ -73,7 +82,7 @@ def process(file: str):
 @app.command()
 def version():
     """Show Cognexa version."""
-    print(f"{APP_NAME} {APP_VERSION}")
+    typer.echo(f"{APP_NAME} {APP_VERSION}")
 
 
 if __name__ == "__main__":

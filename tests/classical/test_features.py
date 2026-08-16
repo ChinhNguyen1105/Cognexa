@@ -1,4 +1,4 @@
-from cognexa.ml.features import TextFeatureExtractor
+from cognexa.ml.classical.features import TextFeatureExtractor
 
 
 def test_text_feature_extraction():

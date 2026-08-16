@@ -40,3 +40,54 @@ v0.2 - typer
              └─────────┬─────────┘
                        ▼
                    Document
+
+
+cognexa- v0.3
+                         COGNEXA V0.3
+                              │
+                              ▼
+                         CLI: cognexa
+                              │
+               ┌──────────────┼──────────────┐
+               ▼              ▼              ▼
+            process          train         classify
+               │              │              │
+               ▼              ▼              ▼
+       document_processor   dataset      classifier
+               │              │              │
+        ┌──────┴──────┐       │              │
+        ▼             ▼       ▼              │
+    ingestion     processing  CSV            │
+        │             │       │              │
+   ┌────┴────┐    ┌───┴───┐   ▼              │
+   ▼         ▼    ▼       ▼  texts + labels   │
+ loader    reader parser cleaner              │
+   │             │       │                    │
+   └─────────────┴───────┘                    │
+                 │                            │
+                 ▼                            │
+             Document                         │
+                 │                            │
+                 ▼                            │
+          Processed Document                  │
+                                              │
+                         ┌────────────────────┘
+                         │
+                         ▼
+                  TextFeatureExtractor
+                         │
+                         ▼
+                       TF-IDF
+                         │
+                         ▼
+                  DocumentClassifier
+                         │
+              ┌──────────┴──────────┐
+              ▼                     ▼
+            train                 predict
+              │                     │
+              ▼                     ▼
+        trained model          Prediction
+              │
+              ▼
+       cognexa_model.pkl

@@ -1,25 +1,34 @@
+
 from pathlib import Path
+import csv
 
 
 def load_text_dataset(path: Path) -> list[tuple[str, str]]:
-    """Load a labeled text dataset.
+    """Load a labeled text dataset from a CSV file.
 
     Expected format:
-        label<TAB>text
+        text,label
     """
     if not path.exists():
         raise FileNotFoundError(f"Dataset not found: {path}")
 
     samples = []
 
-    with path.open("r", encoding="utf-8") as file:
-        for line in file:
-            line = line.strip()
+    with path.open("r", encoding="utf-8", newline="") as file:
+        reader = csv.DictReader(file)
 
-            if not line:
+        if reader.fieldnames != ["text", "label"]:
+            raise ValueError(
+                "Dataset must contain 'text' and 'label' columns."
+            )
+
+        for row in reader:
+            text = row["text"].strip()
+            label = row["label"].strip()
+
+            if not text or not label:
                 continue
 
-            label, text = line.split("\t", maxsplit=1)
-            samples.append((label, text))
+            samples.append((text, label))
 
     return samples

@@ -1,4 +1,4 @@
-from cognexa.ml.trainer import DocumentTrainer
+from cognexa.ml.classical.trainer import DocumentTrainer
 
 
 def test_document_trainer():

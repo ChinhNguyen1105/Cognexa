@@ -1,5 +1,5 @@
-from cognexa.ml.classifier import DocumentClassifier
-from cognexa.ml.features import TextFeatureExtractor
+from cognexa.ml.classical.classifier import DocumentClassifier
+from cognexa.ml.classical.features import TextFeatureExtractor
 
 
 class DocumentTrainer:
