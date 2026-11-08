@@ -1,0 +1,11 @@
+﻿An embedding is a numerical representation of data such as text, images, or audio. In natural language processing, text embeddings represent the semantic characteristics of words, sentences, or documents as vectors in a high-dimensional space.
+
+Semantic similarity measures how closely two pieces of text are related in meaning. Texts with similar meanings are expected to have embedding vectors that are close to each other, even when they use different words.
+
+A vector database stores and searches vector representations. It commonly supports similarity search, allowing applications to retrieve data based on semantic relationships instead of exact keyword matching.
+
+Cosine similarity measures the cosine of the angle between two vectors. A higher cosine similarity generally indicates that two vectors point in a more similar direction. Cosine distance is commonly calculated as one minus cosine similarity, so a lower cosine distance indicates greater similarity.
+
+In a RAG system, an embedding model converts both document chunks and user queries into vectors. The vector database compares these representations and returns the most relevant chunks for the original question.
+
+Embedding quality has a direct impact on retrieval quality. If the embedding model cannot represent the semantic meaning of a query and document accurately, the retrieval system may return irrelevant information even when the documents exist in the knowledge base.

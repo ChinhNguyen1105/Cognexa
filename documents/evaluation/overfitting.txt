@@ -1,0 +1,13 @@
+﻿Overfitting occurs when a machine learning model learns the training data too closely, including noise and accidental patterns. An overfitted model can achieve very high performance on training data but perform poorly on unseen data.
+
+One major cause of overfitting is having too few training examples relative to the complexity of the model. A model with too many parameters may memorize training examples instead of learning general patterns.
+
+Training for too many epochs can also contribute to overfitting. As training continues, the model may keep improving on the training set while its performance on validation data becomes worse.
+
+Data leakage, noisy labels, and insufficient regularization are other factors that can contribute to overfitting. A poorly designed validation process may also make it difficult to detect the problem.
+
+Overfitting reduces the generalization ability of a model. The model may make inaccurate predictions on new samples, even though its training accuracy is high.
+
+Regularization techniques help reduce overfitting by discouraging overly complex models. Common approaches include L1 regularization, L2 regularization, dropout, and early stopping.
+
+Underfitting is different from overfitting. An underfitted model is too simple or insufficiently trained to capture important patterns in the data. It performs poorly on both training and unseen data.

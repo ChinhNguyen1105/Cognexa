@@ -24,3 +24,8 @@ where = ["src"]
 
 [project.scripts]
 cognexa = "cognexa.cli.main:main"
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+pythonpath = ["src"]
+addopts = "-ra"

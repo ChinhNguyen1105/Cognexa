@@ -1,0 +1,154 @@
+﻿
+{
+  "dataset_name": "overfitting_rag_evaluation",
+  "version": "1.1",
+  "source": "overfitting.txt",
+  "questions": [
+    {
+      "id": "OVF-001",
+      "question": "What is overfitting in machine learning?",
+      "type": "definition",
+      "expected_evidence": [
+        "learns the training data too closely",
+        "including noise and accidental patterns"
+      ],
+      "expected_answer_points": [
+        "A model learns the training data too closely.",
+        "A model may learn noise and accidental patterns in the training data."
+      ],
+      "answerable": true
+    },
+    {
+      "id": "OVF-002",
+      "question": "Why can a model with too many parameters overfit?",
+      "type": "cause",
+      "expected_evidence": [
+        "too few training examples relative to the complexity of the model",
+        "memorize training examples instead of learning general patterns"
+      ],
+      "expected_answer_points": [
+        "A model with too many parameters relative to the available training examples can overfit.",
+        "The model may memorize training examples instead of learning general patterns."
+      ],
+      "answerable": true
+    },
+    {
+      "id": "OVF-003",
+      "question": "How does training for too many epochs contribute to overfitting?",
+      "type": "cause",
+      "expected_evidence": [
+        "Training for too many epochs",
+        "performance on validation data becomes worse"
+      ],
+      "expected_answer_points": [
+        "Training performance may continue improving when training for too many epochs.",
+        "Validation performance may become worse when training for too many epochs."
+      ],
+      "answerable": true
+    },
+    {
+      "id": "OVF-004",
+      "question": "What are other factors that contribute to overfitting?",
+      "type": "cause",
+      "expected_evidence": [
+        "Data leakage",
+        "noisy labels",
+        "insufficient regularization",
+        "poorly designed validation process"
+      ],
+      "expected_answer_points": [
+        "Data leakage can contribute to overfitting.",
+        "Noisy labels can contribute to overfitting.",
+        "Insufficient regularization can contribute to overfitting.",
+        "A poorly designed validation process can contribute to overfitting."
+      ],
+      "answerable": true
+    },
+    {
+      "id": "OVF-005",
+      "question": "What are the consequences of overfitting?",
+      "type": "consequence",
+      "expected_evidence": [
+        "reduces the generalization ability",
+        "inaccurate predictions on new samples",
+        "training accuracy is high"
+      ],
+      "expected_answer_points": [
+        "Overfitting reduces the model's ability to generalize.",
+        "An overfitted model can make inaccurate predictions on unseen data.",
+        "An overfitted model can still achieve high training accuracy."
+      ],
+      "answerable": true
+    },
+    {
+      "id": "OVF-006",
+      "question": "How can overfitting be reduced?",
+      "type": "prevention",
+      "expected_evidence": [
+        "Regularization techniques help reduce overfitting",
+        "L1 regularization",
+        "L2 regularization",
+        "dropout",
+        "early stopping"
+      ],
+      "expected_answer_points": [
+        "Regularization can discourage overly complex models and help reduce overfitting.",
+        "L1 regularization can help reduce overfitting.",
+        "L2 regularization can help reduce overfitting.",
+        "Dropout can help reduce overfitting.",
+        "Early stopping can help reduce overfitting."
+      ],
+      "answerable": true
+    },
+    {
+      "id": "OVF-007",
+      "question": "What is the difference between overfitting and underfitting?",
+      "type": "comparison",
+      "expected_evidence": [
+        "overfitted model",
+        "underfitted model",
+        "poorly on unseen data",
+        "performs poorly on both training and unseen data"
+      ],
+      "expected_answer_points": [
+        "An overfitted model performs well on training data but poorly on unseen data.",
+        "An underfitted model performs poorly on both training data and unseen data.",
+        "Underfitting occurs when a model is too simple or insufficiently trained."
+      ],
+      "answerable": true
+    },
+    {
+      "id": "OVF-008",
+      "question": "What is the relationship between overfitting and underfitting?",
+      "type": "relationship",
+      "expected_evidence": [
+        "Overfitting",
+        "Underfitting",
+        "training data",
+        "unseen data"
+      ],
+      "expected_answer_points": [
+        "Overfitting and underfitting are both problems in model learning.",
+        "Overfitting results in good performance on training data but poor performance on unseen data.",
+        "Underfitting results in poor performance on both training data and unseen data."
+      ],
+      "answerable": true
+    },
+    {
+      "id": "OVF-009",
+      "question": "How does overfitting affect GPU memory consumption?",
+      "type": "out_of_scope",
+      "expected_evidence": [],
+      "expected_answer_points": [],
+      "answerable": false
+    },
+    {
+      "id": "OVF-010",
+      "question": "Which optimizer is best for preventing overfitting?",
+      "type": "out_of_scope",
+      "expected_evidence": [],
+      "expected_answer_points": [],
+      "answerable": false
+    }
+  ]
+}

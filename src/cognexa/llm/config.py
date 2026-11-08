@@ -12,3 +12,4 @@ class LLMConfig:
     top_p: float = 0.95
 
     repetition_penalty: float = 1.1
+    do_sample: bool = False

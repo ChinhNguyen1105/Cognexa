@@ -1,0 +1,11 @@
+﻿Fine-tuning is a machine learning technique that continues training a pretrained model on a specialized dataset. The objective is to adapt the model's parameters to a particular task, domain, or desired behavior.
+
+During fine-tuning, training examples are passed through the model. The model calculates a loss, computes gradients, and updates some or all of its parameters using an optimization algorithm.
+
+Full fine-tuning updates all trainable model parameters. Parameter-efficient fine-tuning methods such as LoRA reduce the number of parameters that need to be updated. These methods can lower memory requirements and make adaptation more practical.
+
+Retrieval-Augmented Generation and fine-tuning solve different problems. RAG provides external information to a model at inference time, while fine-tuning changes model parameters through additional training.
+
+RAG is useful when an application needs access to private, frequently changing, or document-based knowledge. Fine-tuning is useful when the goal is to improve task behavior, response format, domain-specific patterns, or model performance on a particular type of task.
+
+RAG and fine-tuning are not mutually exclusive. A system can use a fine-tuned language model together with retrieval to combine specialized model behavior and access to external knowledge.

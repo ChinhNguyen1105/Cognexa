@@ -1,6 +1,6 @@
-import argparse
+﻿import argparse
 
-from cognexa.cli.assistant.commands import chat
+from cognexa.cli.assistant.commands import chat, add_document
 
 
 def main():
@@ -13,6 +13,7 @@ def main():
         dest="command"
     )
 
+    # Assistant commands
     assistant_parser = subparsers.add_parser(
         "assistant",
         help="AI Assistant commands",
@@ -27,6 +28,27 @@ def main():
         help="Start an interactive AI conversation",
     )
 
+    # Knowledge commands
+    knowledge_parser = subparsers.add_parser(
+        "knowledge",
+        help="Knowledge base commands",
+    )
+
+    knowledge_subparsers = knowledge_parser.add_subparsers(
+        dest="knowledge_command"
+    )
+
+    add_parser = knowledge_subparsers.add_parser(
+        "add",
+        help="Add a document to the knowledge base",
+    )
+
+    add_parser.add_argument(
+        "file_path",
+        type=str,
+        help="Path to the document (TXT, PDF, DOCX)",
+    )
+
     args = parser.parse_args()
 
     if (
@@ -34,6 +56,13 @@ def main():
         and args.assistant_command == "chat"
     ):
         chat()
+        return
+
+    if (
+        args.command == "knowledge"
+        and args.knowledge_command == "add"
+    ):
+        add_document(args.file_path)
         return
 
     parser.print_help()
