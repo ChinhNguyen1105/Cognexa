@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+﻿from dataclasses import dataclass
 
 
 @dataclass
@@ -13,3 +13,4 @@ class LLMConfig:
 
     repetition_penalty: float = 1.1
     do_sample: bool = False
+

@@ -575,3 +575,4 @@ def test_verify_sentence_returns_uncertain(monkeypatch):
 
     assert result["status"] == AnswerVerifier.UNCERTAIN
     assert result["method"] == "nli"
+

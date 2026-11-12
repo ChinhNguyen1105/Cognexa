@@ -1,4 +1,4 @@
-from torch import nn
+﻿from torch import nn
 from transformers import AutoModelForCausalLM
 
 
@@ -24,8 +24,9 @@ class LLM(nn.Module):
             use_cache=use_cache,
         )
 
-        # Trả về cả logits và past_key_values nếu use_cache=True
+        # Tráº£ vá» cáº£ logits vĂ  past_key_values náº¿u use_cache=True
         if use_cache:
             return outputs.logits, outputs.past_key_values
 
         return outputs.logits
+

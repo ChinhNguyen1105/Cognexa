@@ -113,3 +113,5 @@ class DocxLoader(BaseLoader):
                 f"Failed to read DOCX document: {path}. "
                 f"Reason: {error}"
             ) from error
+
+

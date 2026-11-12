@@ -75,3 +75,5 @@ class TestCLIMain:
         captured = capsys.readouterr()
 
         assert "Cognexa AI Platform" in captured.out
+
+

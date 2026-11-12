@@ -1,32 +1,34 @@
-﻿import pytest
+﻿from types import SimpleNamespace
+
+import pytest
 
 from cognexa.assistant.answer_selector import AnswerSelector
-from cognexa.knowledge.validation.answer_verifier import AnswerVerifier
+from cognexa.verification import SentenceStatus
 
 
 class FakeAnswerVerifier:
     """Mock AnswerVerifier for unit tests."""
 
-    SUPPORTED = AnswerVerifier.SUPPORTED
-    UNSUPPORTED = AnswerVerifier.UNSUPPORTED
-    UNCERTAIN = AnswerVerifier.UNCERTAIN
-
     def __init__(self, statuses=None):
         self.statuses = statuses or {}
         self.calls = []
 
-    def verify_sentence(self, context, hypothesis):
+    def verify(self, answer, evidence):
         self.calls.append({
-            "context": context,
-            "hypothesis": hypothesis,
+            "answer": answer,
+            "evidence": evidence,
         })
 
-        return {
-            "status": self.statuses.get(
-                hypothesis,
-                self.SUPPORTED,
-            )
-        }
+        status = self.statuses.get(
+            answer,
+            SentenceStatus.SUPPORTED,
+        )
+
+        return SimpleNamespace(
+            sentences=[
+                SimpleNamespace(status=status)
+            ]
+        )
 
 
 @pytest.fixture
@@ -73,7 +75,7 @@ def test_select_rejects_unsupported_sentences(context):
     sentence = "Python supports object-oriented programming."
 
     verifier = FakeAnswerVerifier({
-        sentence: AnswerVerifier.UNSUPPORTED,
+        sentence: SentenceStatus.UNSUPPORTED,
     })
 
     selector = AnswerSelector(
@@ -92,7 +94,7 @@ def test_select_rejects_uncertain_sentences(context):
     sentence = "Python supports object-oriented programming."
 
     verifier = FakeAnswerVerifier({
-        sentence: AnswerVerifier.UNCERTAIN,
+        sentence: SentenceStatus.UNCERTAIN,
     })
 
     selector = AnswerSelector(

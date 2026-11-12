@@ -23,6 +23,8 @@ class QueryAnalyzer:
             r"\bpros\s+and\s+cons\b",
             r"\bstrengths?\s+and\s+weaknesses\b",
             r"\btrade[- ]offs?\b",
+            r"\bvs\.?\b",
+            r"\bversus\b",
             r"\bso\s+sánh\b",
             r"\bkhác\s+nhau\b",
             r"\bưu\s+điểm\s+và\s+nhược\s+điểm\b",
@@ -31,6 +33,10 @@ class QueryAnalyzer:
             r"\bcauses?\s+and\s+consequences?\b",
             r"\bcauses?\s+and\s+effects?\b",
             r"\breasons?\s+and\s+consequences?\b",
+            r"\bwhat\s+happens\s+when\b",
+            r"\bwhat\s+are\s+the\s+effects?\b",
+            r"\bwhy\s+does\b",
+            r"\bwhat\s+causes?\b",
             r"\bnguyên\s+nhân\s+và\s+hậu\s+quả\b",
         ],
         "multi_aspect": [
@@ -38,14 +44,19 @@ class QueryAnalyzer:
             r"\bhow\s+.*\s+and\s+why\b",
             r"\bwhat\s+.*\s+and\s+why\b",
             r"\bexplain\s+.*\s+as\s+well\s+as\b",
+            r"\bwhat\s+is\s+.*\s+and\s+how\b",
+            r"\bhow\s+does\s+.*\s+and\s+when\b",
         ],
         "relationship": [
             r"\brelationship\s+between\b",
             r"\bconnection\s+between\b",
             r"\bhow\s+.*\s+relate\s+to\b",
             r"\brelationship\s+of\b",
+            r"\bhow\s+are\s+.*\s+and\s+.*\s+related\b",
+            r"\bwhat\s+is\s+the\s+link\s+between\b",
             r"\bmối\s+quan\s+hệ\b",
             r"\bliên\s+hệ\s+giữa\b",
+            r"\bgiữa\s+.*\s+và\s+.*\b",
         ],
     }
 
@@ -65,7 +76,6 @@ class QueryAnalyzer:
 
         normalized_query = query.lower().strip()
 
-        # More specific question types must be checked first.
         for question_type in (
             "comparison",
             "cause_effect",
@@ -80,7 +90,6 @@ class QueryAnalyzer:
             ):
                 return question_type
 
-        # Multiple explicit questions may require decomposition.
         if normalized_query.count("?") > 1:
             return "multi_aspect"
 
@@ -93,3 +102,5 @@ class QueryAnalyzer:
         This is a heuristic, not a semantic classifier.
         """
         return self.classify(query) != "simple"
+
+

@@ -1,4 +1,4 @@
-import pytest
+﻿from cognexa.verification import AnswerVerifier
 
 
 def test_answer_verifier_diagnostic(rag_environment):
@@ -64,21 +64,27 @@ def test_answer_verifier_diagnostic(rag_environment):
     ]
 
     for case in test_cases:
-        result = verifier.verify_sentence(
-            context=case["context"],
-            hypothesis=case["hypothesis"],
+        result = verifier.verify(
+            answer=case["hypothesis"],
+            evidence=[case["context"]],
         )
 
         print("\n" + "=" * 70)
         print(f"TEST: {case['name']}")
         print(f"PREMISE: {case['context']}")
         print(f"HYPOTHESIS: {case['hypothesis']}")
-        print(f"STATUS: {result['status']}")
-        print(f"METHOD: {result['method']}")
-        print(f"SCORE: {result['score']}")
-        print(
-            f"CONTRADICTION: "
-            f"{result.get('contradiction_score')}"
-        )
+        print(f"STATUS: {result.status.value}")
+
+        if result.sentences:
+            sentence_result = result.sentences[0]
+
+            print(f"SENTENCE STATUS: {sentence_result.status.value}")
+            print(f"METHOD: {sentence_result.method.value}")
+            print(f"ENTAILMENT: {sentence_result.entailment_score}")
+            print(
+                f"CONTRADICTION: "
+                f"{sentence_result.contradiction_score}"
+            )
+            print(f"REASON: {sentence_result.reason}")
 
     assert len(test_cases) == 5

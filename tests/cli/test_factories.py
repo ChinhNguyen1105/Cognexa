@@ -1,4 +1,4 @@
-﻿from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 from cognexa.cli.assistant.commands import (
     create_vector_store,
@@ -96,6 +96,7 @@ class TestBasicFactories:
 class TestKnowledgeFactories:
 
     @patch("cognexa.cli.assistant.commands.KnowledgeBase")
+    @patch("cognexa.cli.assistant.commands.BM25Retriever")
     @patch("cognexa.cli.assistant.commands.IngestionPipeline")
     @patch("cognexa.cli.assistant.commands.Retriever")
     @patch("cognexa.cli.assistant.commands.TextChunker")
@@ -108,6 +109,7 @@ class TestKnowledgeFactories:
         mock_chunker,
         mock_retriever,
         mock_pipeline,
+        mock_bm25_retriever,
         mock_knowledge_base,
     ):
         embedder = MagicMock()
@@ -135,14 +137,20 @@ class TestKnowledgeFactories:
         assert pipeline_kwargs["embedder"] is embedder
         assert pipeline_kwargs["vector_store"] is vector_store
 
+        mock_bm25_retriever.assert_called_once_with()
+
         mock_knowledge_base.assert_called_once_with(
             ingestion_pipeline=mock_pipeline.return_value,
             retriever=mock_retriever.return_value,
+            sparse_retriever=mock_bm25_retriever.return_value,
         )
+
+        mock_knowledge_base.return_value.refresh_sparse_index.assert_called_once_with()
 
         assert result is mock_knowledge_base.return_value
 
     @patch("cognexa.cli.assistant.commands.KnowledgeBase")
+    @patch("cognexa.cli.assistant.commands.BM25Retriever")
     @patch("cognexa.cli.assistant.commands.IngestionPipeline")
     @patch("cognexa.cli.assistant.commands.Retriever")
     @patch("cognexa.cli.assistant.commands.TextEmbedder")
@@ -157,6 +165,7 @@ class TestKnowledgeFactories:
         mock_embedder,
         mock_retriever,
         mock_pipeline,
+        mock_bm25_retriever,
         mock_knowledge_base,
     ):
         create_knowledge_base()
@@ -217,6 +226,7 @@ class TestAssistantFactory:
     @patch("cognexa.cli.assistant.commands.AnswerSelector")
     @patch("cognexa.cli.assistant.commands.AnswerExtractor")
     @patch("cognexa.cli.assistant.commands.CrossEncoderReranker")
+    @patch("cognexa.cli.assistant.commands.CrossEncoderCandidateReranker")
     @patch("cognexa.cli.assistant.commands.AnswerVerifier")
     @patch("cognexa.cli.assistant.commands.create_knowledge_base")
     @patch("cognexa.cli.assistant.commands.create_embedder")
@@ -229,6 +239,7 @@ class TestAssistantFactory:
         mock_embedder_factory,
         mock_knowledge_base_factory,
         mock_answer_verifier,
+        mock_candidate_reranker,
         mock_reranker,
         mock_answer_extractor,
         mock_answer_selector,
@@ -251,9 +262,9 @@ class TestAssistantFactory:
         mock_embedder_factory.assert_called_once_with()
 
         # Verify shared embedder
-        mock_knowledge_base_factory.assert_called_once_with(
-            embedder=embedder,
-        )
+        mock_knowledge_base_factory.assert_called_once()
+        assert mock_knowledge_base_factory.call_args.kwargs["embedder"] is embedder
+        assert "vector_store" in mock_knowledge_base_factory.call_args.kwargs
 
         # Verify AnswerExtractor dependencies
         mock_answer_extractor.assert_called_once_with(
@@ -269,16 +280,30 @@ class TestAssistantFactory:
         )
 
         # Verify Assistant dependencies
-        mock_assistant.assert_called_once_with(
-            generator=generator,
-            prompt_builder=prompt_builder,
-            knowledge_base=knowledge_base,
-            answer_verifier=answer_verifier,
-            answer_extractor=answer_extractor,
-            answer_selector=answer_selector,
-            retrieval_reranker=reranker,
-            retrieval_top_k=3,
-            reranking_top_k=5,
-        )
+        mock_assistant.assert_called_once()
+        assistant_kwargs = mock_assistant.call_args.kwargs
+
+        assert assistant_kwargs["generator"] is generator
+        assert assistant_kwargs["prompt_builder"] is prompt_builder
+        assert assistant_kwargs["knowledge_base"] is knowledge_base
+        assert assistant_kwargs["answer_verifier"] is answer_verifier
+        assert assistant_kwargs["answer_extractor"] is answer_extractor
+        assert assistant_kwargs["answer_selector"] is answer_selector
+        assert assistant_kwargs["retrieval_top_k"] == 3
+        assert "retrieval_reranker" not in assistant_kwargs
+        assert "reranking_top_k" not in assistant_kwargs
+
+        assert assistant_kwargs["adaptive_retriever"] is not None
+        assert assistant_kwargs["query_plan_builder"] is not None
+        assert assistant_kwargs["evidence_context_builder"] is not None
 
         assert result is mock_assistant.return_value
+
+
+
+
+
+
+
+
+

@@ -348,3 +348,5 @@ def test_retrieval_pipeline_quality(
                 f"  {metric}: "
                 f"{new_value - base_value:+.4f}"
             )
+
+

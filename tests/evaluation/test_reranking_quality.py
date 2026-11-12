@@ -301,3 +301,5 @@ def test_cross_encoder_reranking_quality(
         f"  MRR: "
         f"{reranked_average['mrr'] - dense_average['mrr']:+.4f}"
     )
+
+

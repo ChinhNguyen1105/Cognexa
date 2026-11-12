@@ -79,3 +79,5 @@ class TextEmbedder:
         )
 
         return embeddings.tolist()
+
+

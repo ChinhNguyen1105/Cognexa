@@ -8,3 +8,23 @@ __pycache__/
 dist/
 build/
 *.egg-info/
+
+# Local runtime data
+logs/
+backups/
+
+# Python generated files
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Build artifacts
+build/
+dist/
+# Generated vector database
+data/vector_store/

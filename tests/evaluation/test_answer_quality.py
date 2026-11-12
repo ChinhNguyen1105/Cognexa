@@ -1,152 +1,136 @@
-﻿
-import re
+﻿import re
 
 from cognexa.assistant.assistant import Assistant
+from cognexa.verification import VerificationStatus
+from cognexa.knowledge.evaluation.metrics.context_recall import (
+    calculate_context_evidence_recall,
+    calculate_retrieved_evidence_recall,
+)
 
 
 def normalize(text: str) -> str:
-    text = text.lower().strip()
+    text = (text or "").lower().strip()
     text = re.sub(r"[^\w\s]", " ", text)
     text = re.sub(r"\s+", " ", text)
     return text.strip()
 
 
 def split_sentences(text: str) -> list[str]:
-    parts = re.split(
-        r"(?<=[.!?])\s+|\n+",
-        text.strip(),
-    )
+    if not text or not text.strip():
+        return []
+    pieces = re.split(r"(?<=[.!?])\s+|\n+", text.strip())
+    return [piece.strip() for piece in pieces if piece.strip()]
 
-    return [
-        part.strip()
-        for part in parts
-        if part.strip()
-    ]
+
+def is_rejection_response(response: str) -> bool:
+    if not isinstance(response, str):
+        return False
+    normalized = normalize(response)
+    rejection_messages = {
+        normalize(Assistant.NO_KNOWLEDGE_MESSAGE),
+        normalize(Assistant.UNSUPPORTED_ANSWER_MESSAGE),
+    }
+    return normalized in rejection_messages
 
 
 def calculate_lexical_answer_point_recall(
     response: str,
     expected_points: list[str],
 ) -> tuple[int, int, float]:
-    """Measure exact lexical coverage of expected answer points."""
+    """
+    Token-level recall.
 
+    Returns:
+        matched_tokens, total_expected_tokens, recall
+    """
     if not expected_points:
         return 0, 0, 0.0
 
-    normalized_response = normalize(response)
-
-    matched_points = sum(
-        1
-        for point in expected_points
-        if normalize(point)
-        and normalize(point) in normalized_response
+    response_tokens = set(
+        re.findall(r"\b\w+\b", (response or "").casefold())
     )
 
-    total_points = len(expected_points)
+    matched_tokens = 0
+    total_tokens = 0
 
-    return (
-        matched_points,
-        total_points,
-        matched_points / total_points,
-    )
+    for point in expected_points:
+        expected_tokens = set(
+            re.findall(r"\b\w+\b", (point or "").casefold())
+        )
+
+        if not expected_tokens:
+            continue
+
+        total_tokens += len(expected_tokens)
+        matched_tokens += len(expected_tokens & response_tokens)
+
+    recall = matched_tokens / total_tokens if total_tokens else 0.0
+    return matched_tokens, total_tokens, recall
 
 
-def calculate_semantic_answer_point_recall(
-    response: str,
+def calculate_semantic_context_coverage(
+    context: str,
     expected_points: list[str],
     answer_verifier,
 ) -> tuple[int, int, float]:
     """
-    Check whether the response semantically supports
-    each expected answer point.
-
-    This is an NLI-based approximation, not a human evaluation.
+    Measures how many expected answer points are supported
+    by the exact context used by Assistant.
     """
-
-    if not expected_points or not response.strip():
+    if not expected_points or not context or not context.strip():
         return 0, len(expected_points), 0.0
 
-    matched_points = 0
+    matched = 0
 
     for point in expected_points:
-        result = answer_verifier.verify_sentence(
-            context=response,
-            hypothesis=point,
+        result = answer_verifier.verify(
+            answer=point,
+            evidence=[context],
         )
 
-        if result["status"] == answer_verifier.SUPPORTED:
-            matched_points += 1
+        if getattr(result, "status", None) == VerificationStatus.SUPPORTED:
+            matched += 1
 
-    total_points = len(expected_points)
-
-    return (
-        matched_points,
-        total_points,
-        matched_points / total_points,
-    )
+    total = len(expected_points)
+    return matched, total, matched / total if total else 0.0
 
 
-def calculate_evidence_support_rate(
-    response: str,
-    context: str,
-    answer_verifier,
-) -> tuple[int, int, float]:
-    """Measure how many response sentences are supported by context."""
+def calculate_semantic_answer_point_recall(response: str, expected_points: list[str], answer_verifier) -> tuple[int, int, float]:
+    if not expected_points or not response or not response.strip():
+        return 0, len(expected_points), 0.0
 
+    matched = 0
+    for point in expected_points:
+        result = answer_verifier.verify(
+            answer=point,
+            evidence=[response],
+        )
+        if getattr(result, "status", None) == VerificationStatus.SUPPORTED:
+            matched += 1
+
+    total = len(expected_points)
+    return matched, total, matched / total if total else 0.0
+
+
+def calculate_evidence_support_rate(response: str, context: str, answer_verifier) -> tuple[int, int, float]:
     sentences = split_sentences(response)
-
     if not sentences or not context:
         return 0, len(sentences), 0.0
 
-    supported_count = 0
-
+    supported = 0
     for sentence in sentences:
-        result = answer_verifier.verify_sentence(
-            context=context,
-            hypothesis=sentence,
+        result = answer_verifier.verify(
+            answer=sentence,
+            evidence=[context],
         )
+        if getattr(result, "status", None) == VerificationStatus.SUPPORTED:
+            supported += 1
 
-        if result["status"] == answer_verifier.SUPPORTED:
-            supported_count += 1
-
-    return (
-        supported_count,
-        len(sentences),
-        supported_count / len(sentences),
-    )
+    total = len(sentences)
+    return supported, total, supported / total if total else 0.0
 
 
-def is_rejection_response(response: str) -> bool:
-    """Check whether the Assistant returns an explicit rejection."""
-
-    normalized_response = normalize(response)
-
-    rejection_messages = [
-        Assistant.NO_KNOWLEDGE_MESSAGE,
-        Assistant.UNSUPPORTED_ANSWER_MESSAGE,
-    ]
-
-    return normalized_response in {
-        normalize(message)
-        for message in rejection_messages
-    }
-
-
-def test_end_to_end_answer_quality(
-    rag_environment,
-    evaluation_dataset,
-):
-    """
-    Evaluate the complete RAG answer pipeline.
-
-    Metrics:
-    - Non-rejection rate on answerable questions
-    - Lexical answer point recall
-    - Semantic answer point recall
-    - Evidence support rate
-    - Unanswerable rejection rate
-    """
-
+def build_assistant(rag_environment):
     assistant = Assistant(
         generator=None,
         prompt_builder=None,
@@ -154,34 +138,57 @@ def test_end_to_end_answer_quality(
         context_validator=rag_environment.context_validator,
         answer_verifier=rag_environment.answer_verifier,
         answer_extractor=rag_environment.answer_extractor,
+        answer_selector=rag_environment.answer_selector,
         retrieval_top_k=5,
         query_decomposer=rag_environment.decomposer,
-        result_aggregator=rag_environment.result_aggregator,
-        retrieval_reranker=rag_environment.reranker,
-        reranking_top_k=5,
     )
 
+    # A5.1: instrument the exact components used by this benchmark.
+    from cognexa.assistant.diagnostics import (
+        configure_diagnostics,
+        instrument_method,
+    )
+
+    logger = configure_diagnostics()
+    if not logger.disabled:
+        logger.info(
+            "A5.1 BENCHMARK PIPELINE: legacy KnowledgeBase route; "
+            "adaptive_retriever is not attached to this Assistant."
+        )
+        instrument_method(rag_environment.knowledge_base, "search", "KB_SEARCH")
+        instrument_method(rag_environment.retriever, "retrieve", "DENSE_RETRIEVER")
+        instrument_method(assistant.answer_extractor, "extract_candidates", "EXTRACTOR")
+        instrument_method(assistant.answer_verifier, "verify", "VERIFIER")
+        instrument_method(assistant.answer_selector, "select_detailed", "SELECTOR")
+        instrument_method(assistant.answerability_checker, "assess", "ANSWERABILITY")
+
+    return assistant
+
+
+def test_end_to_end_answer_quality(rag_environment, evaluation_dataset):
+    """Run the end-to-end answer pipeline over the evaluation dataset."""
+    assistant = build_assistant(rag_environment)
+    from cognexa.assistant.diagnostics import configure_diagnostics
+    diagnostic_logger = configure_diagnostics()
     questions = evaluation_dataset["questions"]
 
-    answerable_questions = [
-        item for item in questions if item["answerable"]
-    ]
-
-    unanswerable_questions = [
-        item for item in questions if not item["answerable"]
-    ]
-
-    answered_count = 0
-    rejected_count = 0
-
-    total_expected_points = 0
-    lexical_matched_points = 0
-    semantic_matched_points = 0
-
-    total_supported_sentences = 0
-    total_answer_sentences = 0
+    answerable_questions = [item for item in questions if item.get("answerable")]
+    unanswerable_questions = [item for item in questions if not item.get("answerable")]
 
     question_results = []
+    answered_count = 0
+    rejected_count = 0
+    total_expected_points = 0
+    total_expected_tokens = 0
+    lexical_points_matched = 0
+    semantic_points_matched = 0
+    context_points_matched = 0
+    total_context_points = 0
+    retrieved_evidence_matched = 0
+    context_evidence_matched = 0
+    total_expected_evidence = 0
+    total_supported_sentences = 0
+    total_answer_sentences = 0
 
     print("\n" + "=" * 80)
     print("END-TO-END RAG ANSWER QUALITY EVALUATION")
@@ -190,118 +197,154 @@ def test_end_to_end_answer_quality(
     for item in questions:
         question_id = item["id"]
         question = item["question"]
-        answerable = item["answerable"]
+        answerable = bool(item.get("answerable"))
 
-        print("\n" + "-" * 80)
-        print(f"QUESTION: {question_id}")
-        print(f"TYPE: {item['type']}")
-        print(f"QUESTION: {question}")
-        print(f"ANSWERABLE: {answerable}")
+        print(f"\n--- {question_id} ---")
+        print(f"Question: {question}")
+        print(f"Answerable: {answerable}")
+
+        if not diagnostic_logger.disabled:
+            diagnostic_logger.info(
+                "========== QUESTION START id=%s answerable=%s question=%s ==========",
+                question_id,
+                answerable,
+                question,
+            )
 
         response = assistant.chat(question)
-
-        print("\n[ASSISTANT RESPONSE]")
-        print(response)
-
         rejected = is_rejection_response(response)
 
-        if answerable:
-            expected_points = item.get(
-                "expected_answer_points",
-                [],
+        if not diagnostic_logger.disabled:
+            diagnostic_logger.info(
+                "QUESTION END id=%s rejected=%s response=%r",
+                question_id,
+                rejected,
+                response,
             )
+            diagnostic_logger.info("========== QUESTION END id=%s ==========", question_id)
 
+        if answerable:
+            expected_points = item.get("expected_answer_points") or item.get("expected_evidence") or []
             total_expected_points += len(expected_points)
 
-            lexical_matched, total, lexical_recall = (
-                calculate_lexical_answer_point_recall(
-                    response=response,
-                    expected_points=expected_points,
+            lexical_matched, lexical_total, lexical_recall = calculate_lexical_answer_point_recall(
+                response=response,
+                expected_points=expected_points,
+            )
+            semantic_matched, semantic_total, semantic_recall = calculate_semantic_answer_point_recall(
+                response=response,
+                expected_points=expected_points,
+                answer_verifier=assistant.answer_verifier,
+            )
+
+            lexical_points_matched += lexical_matched
+            total_expected_tokens += lexical_total
+            semantic_points_matched += semantic_matched
+
+            # Use the exact context consumed by this Assistant.chat() call.
+            context = getattr(assistant, "last_context", None) or ""
+            expected_evidence = item.get("expected_evidence") or []
+            retrieved_documents = getattr(assistant, "last_documents", []) or []
+
+            retrieved_matched, evidence_total, retrieved_recall = (
+                calculate_retrieved_evidence_recall(
+                    documents=retrieved_documents,
+                    expected_evidence=expected_evidence,
                 )
             )
 
-            semantic_matched, _, semantic_recall = (
-                calculate_semantic_answer_point_recall(
-                    response=response,
+            context_evidence_matched_count, context_evidence_total, context_evidence_recall = (
+                calculate_context_evidence_recall(
+                    context=context,
+                    expected_evidence=expected_evidence,
+                )
+            )
+
+            retrieved_evidence_matched += retrieved_matched
+            context_evidence_matched += context_evidence_matched_count
+            total_expected_evidence += evidence_total
+            if question_id in {"OVF-003", "OVF-006", "OVF-007"}:
+                print("\n========== ACTUAL CONTEXT ==========")
+                print(context)
+
+                print("\n========== ACTUAL RETRIEVED DOCUMENTS ==========")
+                for index, document in enumerate(
+                    getattr(assistant, "last_documents", []) or [],
+                    start=1,
+                ):
+                    print(f"\n--- Document {index} ---")
+                    print(document)
+            context_matched, context_total, context_recall = (
+                calculate_semantic_context_coverage(
+                    context=context,
                     expected_points=expected_points,
                     answer_verifier=assistant.answer_verifier,
                 )
             )
 
-            lexical_matched_points += lexical_matched
-            semantic_matched_points += semantic_matched
+            context_points_matched += context_matched
+            total_context_points += context_total
 
-            if not rejected:
-                answered_count += 1
-
-            # Retrieve context again for evidence verification.
-            # This is a temporary evaluation approach; ideally,
-            # Assistant should expose the context used during chat.
-            retrieved_documents = assistant._retrieve_documents(
-                question
-            )
-
-            if retrieved_documents:
-                is_relevant = assistant.context_validator.is_relevant(
-                    retrieved_documents
-                )
-            else:
-                is_relevant = False
-
-            if is_relevant:
-                expanded_documents = (
-                    assistant.knowledge_base.expand_to_parents(
-                        retrieved_documents
-                    )
-                )
-
-                context = assistant._format_context(
-                    expanded_documents
-                )
-            else:
-                context = None
-
-            supported, sentence_count, support_rate = (
-                calculate_evidence_support_rate(
-                    response=response,
-                    context=context or "",
-                    answer_verifier=assistant.answer_verifier,
-                )
+            supported, sentence_count, support_rate = calculate_evidence_support_rate(
+                response=response,
+                context=context,
+                answer_verifier=assistant.answer_verifier,
             )
 
             total_supported_sentences += supported
             total_answer_sentences += sentence_count
 
+            # Expose selector behavior for diagnosis.
+            selection = getattr(assistant, "last_selection", None)
+            selected_sentences = getattr(selection, "texts", []) or []
+            rejected_sentences = getattr(selection, "rejected", []) or []
+            uncovered_aspects = getattr(selection, "uncovered_aspects", []) or []
+            retrieved_documents = getattr(assistant, "last_documents", []) or []
+
+            print(
+                f"Actual retrieval: {len(retrieved_documents)} documents | "
+                f"Context characters: {len(context)}"
+            )
+            print(
+                f"Selector: {len(selected_sentences)} selected | "
+                f"{len(rejected_sentences)} rejected | "
+                f"Uncovered aspects: {uncovered_aspects}"
+            )
+
+            for selected_sentence in selected_sentences:
+                print(f"  [SELECTED] {selected_sentence}")
+
+            for rejected_sentence in rejected_sentences:
+                print(
+                    "  [REJECTED] "
+                    f"{rejected_sentence.get('sentence')} | "
+                    f"status={rejected_sentence.get('status')}"
+                )
+
+            if not rejected:
+                answered_count += 1
+
             result = {
                 "id": question_id,
                 "answerable": True,
                 "rejected": rejected,
-                "lexical_point_recall": lexical_recall,
+                "token_recall": lexical_recall,
                 "semantic_point_recall": semantic_recall,
+                "semantic_context_coverage": context_recall,
+                "retrieved_evidence_recall": retrieved_recall,
+                "context_evidence_recall": context_evidence_recall,
+                "evidence_support_rate": support_rate,
                 "supported_sentences": supported,
                 "total_sentences": sentence_count,
-                "evidence_support_rate": support_rate,
             }
 
-            print("\n[ANSWER QUALITY]")
-            print(
-                f"Lexical answer points: "
-                f"{lexical_matched}/{total}"
-            )
-            print(f"Lexical point recall: {lexical_recall:.4f}")
-
-            print(
-                f"Semantic answer points: "
-                f"{semantic_matched}/{total}"
-            )
-            print(f"Semantic point recall: {semantic_recall:.4f}")
-
-            print(
-                f"Evidence support: "
-                f"{supported}/{sentence_count} "
-                f"({support_rate:.4f})"
-            )
-
+            print(f"Response: {response}")
+            print(f"Token recall: {lexical_matched}/{lexical_total} ({lexical_recall:.4f})")
+            print(f"Semantic answer points: {semantic_matched}/{semantic_total} ({semantic_recall:.4f})")
+            print(f"Semantic context coverage: {context_matched}/{context_total} ({context_recall:.4f})")
+            print(f"Retrieved evidence recall: {retrieved_matched}/{evidence_total} ({retrieved_recall:.4f})")
+            print(f"Context evidence recall: {context_evidence_matched_count}/{context_evidence_total} ({context_evidence_recall:.4f})")
+            print(f"Evidence support: {supported}/{sentence_count} ({support_rate:.4f})")
         else:
             if rejected:
                 rejected_count += 1
@@ -312,96 +355,59 @@ def test_end_to_end_answer_quality(
                 "rejected": rejected,
             }
 
-            print("\n[UNANSWERABLE QUESTION]")
+            print(f"Response: {response}")
             print(f"Correctly rejected: {rejected}")
 
         question_results.append(result)
 
-    # Aggregate metrics
-
-    non_rejection_rate = (
-        answered_count / len(answerable_questions)
-        if answerable_questions
-        else 0.0
+    non_rejection_rate = answered_count / len(answerable_questions) if answerable_questions else 0.0
+    token_recall = lexical_points_matched / total_expected_tokens if total_expected_tokens else 0.0
+    semantic_point_recall = semantic_points_matched / total_expected_points if total_expected_points else 0.0
+    context_recall = context_points_matched / total_context_points if total_context_points else 0.0
+    retrieved_evidence_recall = (
+        retrieved_evidence_matched / total_expected_evidence
+        if total_expected_evidence else 0.0
     )
-
-    lexical_point_recall = (
-        lexical_matched_points / total_expected_points
-        if total_expected_points
-        else 0.0
+    context_evidence_recall = (
+        context_evidence_matched / total_expected_evidence
+        if total_expected_evidence else 0.0
     )
-
-    semantic_point_recall = (
-        semantic_matched_points / total_expected_points
-        if total_expected_points
-        else 0.0
-    )
-
-    evidence_support_rate = (
-        total_supported_sentences / total_answer_sentences
-        if total_answer_sentences
-        else 0.0
-    )
-
-    rejection_rate = (
-        rejected_count / len(unanswerable_questions)
-        if unanswerable_questions
-        else 0.0
-    )
-
-    # Final report
+    evidence_support_rate = total_supported_sentences / total_answer_sentences if total_answer_sentences else 0.0
+    rejection_rate = rejected_count / len(unanswerable_questions) if unanswerable_questions else 0.0
 
     print("\n" + "=" * 80)
     print("FINAL EVALUATION REPORT")
     print("=" * 80)
-
     print(f"Total questions: {len(questions)}")
-    print(f"Answerable questions: {len(answerable_questions)}")
-    print(f"Unanswerable questions: {len(unanswerable_questions)}")
-
-    print("\n[METRICS]")
-
+    print(f"Answerable: {len(answerable_questions)}")
+    print(f"Unanswerable: {len(unanswerable_questions)}")
+    print(f"Non-rejection rate: {non_rejection_rate:.4f} ({answered_count}/{len(answerable_questions)})")
+    print(f"Token recall: {token_recall:.4f} ({lexical_points_matched}/{total_expected_tokens} tokens)")
+    print(f"Semantic answer point recall: {semantic_point_recall:.4f} ({semantic_points_matched}/{total_expected_points} points)")
     print(
-        f"Non-rejection Rate: "
-        f"{non_rejection_rate:.4f} "
-        f"({answered_count}/{len(answerable_questions)})"
+        f"Semantic context coverage: {context_recall:.4f} "
+        f"({context_points_matched}/{total_context_points} points)"
     )
-
     print(
-        f"Lexical Answer Point Recall: "
-        f"{lexical_point_recall:.4f} "
-        f"({lexical_matched_points}/{total_expected_points})"
+        f"Retrieved evidence recall: {retrieved_evidence_recall:.4f} "
+        f"({retrieved_evidence_matched}/{total_expected_evidence} evidence items)"
     )
-
     print(
-        f"Semantic Answer Point Recall: "
-        f"{semantic_point_recall:.4f} "
-        f"({semantic_matched_points}/{total_expected_points})"
+        f"Context evidence recall: {context_evidence_recall:.4f} "
+        f"({context_evidence_matched}/{total_expected_evidence} evidence items)"
     )
-
-    print(
-        f"Evidence Support Rate: "
-        f"{evidence_support_rate:.4f} "
-        f"({total_supported_sentences}/{total_answer_sentences})"
-    )
-
-    print(
-        f"Unanswerable Rejection Rate: "
-        f"{rejection_rate:.4f} "
-        f"({rejected_count}/{len(unanswerable_questions)})"
-    )
-
+    print(f"Evidence support rate: {evidence_support_rate:.4f} ({total_supported_sentences}/{total_answer_sentences})")
+    print(f"Unanswerable rejection rate: {rejection_rate:.4f} ({rejected_count}/{len(unanswerable_questions)})")
     print("\n[QUESTION-LEVEL RESULTS]")
-
     for result in question_results:
         print(result)
 
-    print("\n" + "=" * 80)
-
-    # Execution assertions only; no arbitrary quality thresholds.
     assert len(question_results) == len(questions)
+    assert all(isinstance(result, dict) for result in question_results)
 
-    assert all(
-        isinstance(result, dict)
-        for result in question_results
-    )
+
+
+
+
+
+

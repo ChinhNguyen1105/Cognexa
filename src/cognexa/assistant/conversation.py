@@ -1,29 +1,15 @@
 class Conversation:
-    """
-    Manage the conversation history between the user and the assistant.
-    """
+    def __init__(self, history=None):
+        self._history = list(history or [])
 
-    def __init__(self):
-        self.messages: list[dict[str, str]] = []
+    def add_user_message(self, message: str) -> None:
+        self._history.append({"role": "user", "content": message})
 
-    def add_user_message(self, content: str):
-        self.messages.append(
-            {
-                "role": "user",
-                "content": content,
-            }
-        )
+    def add_assistant_message(self, message: str) -> None:
+        self._history.append({"role": "assistant", "content": message})
 
-    def add_assistant_message(self, content: str):
-        self.messages.append(
-            {
-                "role": "assistant",
-                "content": content,
-            }
-        )
+    def get_history(self):
+        return [entry.copy() for entry in self._history]
 
-    def get_history(self) -> list[dict[str, str]]:
-        return self.messages.copy()
-
-    def clear(self):
-        self.messages.clear()
+    def clear(self) -> None:
+        self._history.clear()

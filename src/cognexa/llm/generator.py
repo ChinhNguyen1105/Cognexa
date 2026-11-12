@@ -208,3 +208,4 @@ class TextGenerator:
         return self.tokenizer.decode(
             generated_token_ids[0]
         ).strip()
+

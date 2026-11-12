@@ -77,3 +77,5 @@ class TestTextTokenizer:
         )
 
         assert result == "Hello world"
+
+

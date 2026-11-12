@@ -466,3 +466,4 @@ if __name__ == "__main__":
         print(f"SCORE: {result['score']:.4f}")
         print(f"CONTRADICTION: {result['contradiction_score']:.4f}")
         print(f"EVIDENCE: {result['evidence']}")
+

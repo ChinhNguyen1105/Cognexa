@@ -201,3 +201,5 @@ class TestTextEmbedder:
             self.fake_model.encode_kwargs["show_progress_bar"]
             is False
         )
+
+

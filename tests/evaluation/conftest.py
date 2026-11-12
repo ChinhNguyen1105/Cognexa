@@ -5,43 +5,43 @@ import pytest
 
 from cognexa.assistant.answer_extractor import AnswerExtractor
 from cognexa.assistant.answer_selector import AnswerSelector
+
 from cognexa.knowledge.embedding.embedder import TextEmbedder
 from cognexa.knowledge.ingestion.loader import DocumentLoader
 from cognexa.knowledge.ingestion.pipeline import IngestionPipeline
 from cognexa.knowledge.knowledge_base import KnowledgeBase
 from cognexa.knowledge.processing.chunker import TextChunker
-from cognexa.knowledge.reranking.reranker import CrossEncoderReranker
-from cognexa.knowledge.retrieval.result_aggregator import ResultAggregator
-from cognexa.knowledge.retrieval.retriever import Retriever
-from cognexa.knowledge.validation.answer_verifier import AnswerVerifier
-from cognexa.knowledge.validation.context_validator import ContextValidator
 from cognexa.knowledge.vector_store.store import VectorStore
+
+from cognexa.knowledge.retrieval.candidates.dense_retriever import (
+    Retriever,
+    DenseRetriever,
+)
+from cognexa.knowledge.retrieval.candidates.sparse_retriever import BM25Retriever
+from cognexa.knowledge.retrieval.fusion.result_aggregator import ResultAggregator
+from cognexa.knowledge.retrieval.fusion.rrf_fusion import ReciprocalRankFusion
+from cognexa.knowledge.retrieval.ranking.reranker import CrossEncoderReranker
+from cognexa.knowledge.retrieval.ranking.cross_encoder_reranker import (
+    CrossEncoderCandidateReranker,
+)
+from cognexa.knowledge.retrieval.expansion.evidence_expander import EvidenceExpander
+from cognexa.knowledge.retrieval.coverage.coverage_analyzer import CoverageAnalyzer
+from cognexa.knowledge.retrieval.coverage.sufficiency_checker import SufficiencyChecker
+from cognexa.knowledge.retrieval.adaptive_retriever import AdaptiveRetriever
+from cognexa.knowledge.retrieval.query_plan_builder import QueryPlanBuilder
+
+from cognexa.verification import AnswerVerifier, VerificationDecision
+from cognexa.knowledge.validation.context_validator import ContextValidator
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
-EVALUATION_DOCUMENT = (
-    PROJECT_ROOT
-    / "documents"
-    / "evaluation"
-    / "overfitting.txt"
-)
-
-EVALUATION_DATASET = (
-    Path(__file__).parent
-    / "datasets"
-    / "overfitting.json"
-)
+EVALUATION_DOCUMENT = PROJECT_ROOT / "documents" / "evaluation" / "overfitting.txt"
+EVALUATION_DATASET = Path(__file__).parent / "datasets" / "overfitting.json"
 
 
 class DeterministicQuestionDecomposer:
-    """
-    Deterministic decomposer for reproducible evaluation.
-
-    Keeps the original question unchanged so that evaluation
-    focuses on retrieval and answer quality rather than
-    LLM-generated query variations.
-    """
+    """Deterministic decomposer for reproducible evaluation."""
 
     def decompose(self, question: str) -> list[str]:
         if not isinstance(question, str):
@@ -57,10 +57,6 @@ class DeterministicQuestionDecomposer:
 
 @pytest.fixture(scope="session")
 def evaluation_dataset():
-    """
-    Load the evaluation question dataset.
-    """
-
     import json
 
     if not EVALUATION_DATASET.exists():
@@ -68,19 +64,12 @@ def evaluation_dataset():
             f"Evaluation dataset not found: {EVALUATION_DATASET}"
         )
 
-    with EVALUATION_DATASET.open(
-        "r",
-        encoding="utf-8-sig",
-    ) as file:
+    with EVALUATION_DATASET.open("r", encoding="utf-8-sig") as file:
         return json.load(file)
 
 
 @pytest.fixture(scope="session")
 def evaluation_document():
-    """
-    Return the source document used for evaluation.
-    """
-
     if not EVALUATION_DOCUMENT.exists():
         raise FileNotFoundError(
             f"Evaluation document not found: {EVALUATION_DOCUMENT}"
@@ -90,21 +79,10 @@ def evaluation_document():
 
 
 @pytest.fixture(scope="session")
-def rag_environment(
-    tmp_path_factory,
-    evaluation_document,
-):
-    """
-    Build an isolated RAG environment using real components.
+def rag_environment(tmp_path_factory, evaluation_document):
+    """Build an isolated RAG environment for evaluation."""
 
-    The ChromaDB database is created in pytest's temporary
-    directory. The project's production vector store remains
-    untouched.
-    """
-
-    temporary_directory = tmp_path_factory.mktemp(
-        "cognexa_rag_evaluation"
-    )
+    temporary_directory = tmp_path_factory.mktemp("cognexa_rag_evaluation")
 
     vector_store = VectorStore(
         persist_directory=temporary_directory / "vector_store",
@@ -117,6 +95,8 @@ def rag_environment(
         embedder=embedder,
         vector_store=vector_store,
     )
+
+    sparse_retriever = BM25Retriever()
 
     ingestion_pipeline = IngestionPipeline(
         loader=DocumentLoader(),
@@ -133,6 +113,7 @@ def rag_environment(
     knowledge_base = KnowledgeBase(
         ingestion_pipeline=ingestion_pipeline,
         retriever=retriever,
+        sparse_retriever=sparse_retriever,
     )
 
     ingestion_result = knowledge_base.add_document(
@@ -140,28 +121,27 @@ def rag_environment(
     )
 
     if ingestion_result["child_count"] == 0:
-        raise RuntimeError(
-            "Evaluation document produced no child chunks."
-        )
+        raise RuntimeError("Evaluation document produced no child chunks.")
 
     if ingestion_result["parent_count"] == 0:
-        raise RuntimeError(
-            "Evaluation document produced no parent chunks."
-        )
+        raise RuntimeError("Evaluation document produced no parent chunks.")
+
+    indexed_count = knowledge_base.refresh_sparse_index()
+
+    if indexed_count == 0:
+        raise RuntimeError("BM25 sparse index contains no documents.")
 
     decomposer = DeterministicQuestionDecomposer()
-
     result_aggregator = ResultAggregator()
-
     reranker = CrossEncoderReranker()
 
-    context_validator = ContextValidator(
-        max_distance=0.55,
-    )
+    context_validator = ContextValidator(max_distance=0.55)
 
     answer_verifier = AnswerVerifier(
-        min_entailment_score=0.70,
-        device="cpu",
+        decision=VerificationDecision(
+            entailment_threshold=0.75,
+        ),
+        min_overlap=0.15,
     )
 
     answer_extractor = AnswerExtractor(
@@ -169,6 +149,7 @@ def rag_environment(
         min_candidates=2,
         max_candidates=24,
         score_gap_threshold=3.0,
+        min_score=0.0,
     )
 
     answer_selector = AnswerSelector(
@@ -181,6 +162,7 @@ def rag_environment(
         vector_store=vector_store,
         embedder=embedder,
         retriever=retriever,
+        sparse_retriever=sparse_retriever,
         knowledge_base=knowledge_base,
         decomposer=decomposer,
         result_aggregator=result_aggregator,
@@ -192,4 +174,39 @@ def rag_environment(
         ingestion_result=ingestion_result,
         temporary_directory=temporary_directory,
     )
+
+
+@pytest.fixture(scope="session")
+def adaptive_rag_environment(rag_environment):
+    """Build Adaptive RAG using the isolated evaluation components."""
+
+    candidate_reranker = CrossEncoderCandidateReranker(
+        scorer=rag_environment.reranker,
+    )
+
+    adaptive_retriever = AdaptiveRetriever(
+        dense_retriever=DenseRetriever(
+            embedder=rag_environment.embedder,
+            vector_store=rag_environment.vector_store,
+        ),
+        sparse_retriever=rag_environment.sparse_retriever,
+        fusion=ReciprocalRankFusion(),
+        reranker=candidate_reranker,
+        expander=EvidenceExpander(
+            vector_store=rag_environment.vector_store,
+        ),
+        coverage_analyzer=CoverageAnalyzer(),
+        sufficiency_checker=SufficiencyChecker(min_coverage=0.7),
+        top_k=5,
+        max_iterations=3,
+    )
+
+    return SimpleNamespace(
+        **vars(rag_environment),
+        adaptive_retriever=adaptive_retriever,
+        query_plan_builder=QueryPlanBuilder(),
+    )
+
+
+
 

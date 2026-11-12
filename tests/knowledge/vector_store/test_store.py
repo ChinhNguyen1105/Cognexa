@@ -248,3 +248,115 @@ def test_search_rejects_invalid_top_k(store):
 def test_delete_rejects_empty_ids(store):
     with pytest.raises(ValueError, match="ids cannot be empty"):
         store.delete([])
+
+
+
+def test_get_all_documents_returns_all_child_documents(store):
+    store.add_documents(
+        ids=["chunk_1", "chunk_2", "chunk_3"],
+        documents=[
+            "Python is a programming language.",
+            "NestJS is a Node.js framework.",
+            "MySQL is a relational database.",
+        ],
+        embeddings=[
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ],
+    )
+
+    results = store.get_all_documents()
+
+    assert len(results) == 3
+
+    result_ids = {item["id"] for item in results}
+
+    assert result_ids == {
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+    }
+
+
+def test_get_all_documents_returns_content_and_metadata(store):
+    store.add_documents(
+        ids=["chunk_1"],
+        documents=["Python is a programming language."],
+        embeddings=[[1.0, 0.0, 0.0]],
+        metadatas=[
+            {
+                "document_id": "doc_1",
+                "parent_id": "parent_1",
+                "chunk_index": 0,
+            }
+        ],
+    )
+
+    results = store.get_all_documents()
+
+    assert results == [
+        {
+            "id": "chunk_1",
+            "content": "Python is a programming language.",
+            "metadata": {
+                "document_id": "doc_1",
+                "parent_id": "parent_1",
+                "chunk_index": 0,
+            },
+        }
+    ]
+
+
+def test_get_all_documents_returns_empty_list_when_store_is_empty(store):
+    results = store.get_all_documents()
+
+    assert results == []
+
+def test_get_all_documents_supports_pagination(store):
+    store.add_documents(
+        ids=["chunk_1", "chunk_2", "chunk_3"],
+        documents=["Document one.", "Document two.", "Document three."],
+        embeddings=[
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ],
+    )
+
+    first_page = store.get_all_documents(limit=2, offset=0)
+    second_page = store.get_all_documents(limit=2, offset=2)
+
+    first_ids = {item["id"] for item in first_page}
+    second_ids = {item["id"] for item in second_page}
+
+    assert len(first_page) == 2
+    assert len(second_page) == 1
+    assert first_ids.isdisjoint(second_ids)
+    assert first_ids | second_ids == {
+        "chunk_1",
+        "chunk_2",
+        "chunk_3",
+    }
+
+
+@pytest.mark.parametrize("limit", [0, -1, True, 1.5, "10"])
+def test_get_all_documents_rejects_invalid_limit(store, limit):
+    with pytest.raises(ValueError, match="limit must be a positive integer"):
+        store.get_all_documents(limit=limit)
+
+
+@pytest.mark.parametrize("offset", [-1, True, 1.5, "10"])
+def test_get_all_documents_rejects_invalid_offset(store, offset):
+    with pytest.raises(ValueError, match="offset must be a non-negative integer"):
+        store.get_all_documents(offset=offset)
+
+
+def test_get_all_documents_returns_empty_list_when_offset_exceeds_count(store):
+    store.add_documents(
+        ids=["chunk_1"],
+        documents=["Document one."],
+        embeddings=[[1.0, 0.0, 0.0]],
+    )
+
+    assert store.get_all_documents(offset=10) == []

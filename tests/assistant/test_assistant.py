@@ -200,14 +200,24 @@ def create_rag_assistant():
     context_validator = MagicMock()
     answer_extractor = MagicMock()
     answer_selector = MagicMock()
-    answer_selector.select.side_effect = (
-        lambda candidates, context: [
+    def select_with_relevance(candidates, context):
+        texts = [
             candidate["sentence"]
             if isinstance(candidate, dict)
             else candidate
             for candidate in candidates
         ]
-    )
+
+        return SimpleNamespace(
+            sentences=[{"sentence": sentence} for sentence in texts],
+            texts=texts,
+            top_relevance=1.0,
+            aspects=[],
+            uncovered_aspects=[],
+            rejected=[],
+        )
+
+    answer_selector.select.side_effect = select_with_relevance
 
     knowledge_base.expand_to_parents.side_effect = (
         lambda documents: documents
@@ -509,14 +519,24 @@ class TestAssistantQueryDecomposition:
         answer_selector = MagicMock()
         query_decomposer = MagicMock()
 
-        answer_selector.select.side_effect = (
-            lambda candidates, context: [
+        def select_with_relevance(candidates, context):
+            texts = [
                 candidate["sentence"]
                 if isinstance(candidate, dict)
                 else candidate
                 for candidate in candidates
             ]
-        )
+
+            return SimpleNamespace(
+                sentences=[{"sentence": sentence} for sentence in texts],
+                texts=texts,
+                top_relevance=1.0,
+                aspects=[],
+                uncovered_aspects=[],
+                rejected=[],
+            )
+
+        answer_selector.select.side_effect = select_with_relevance
 
         knowledge_base.expand_to_parents.side_effect = (
             lambda documents: documents
@@ -638,6 +658,76 @@ class TestAssistantQueryDecomposition:
             "It retrieves relevant documents."
         )
 
+    def test_detailed_queries_are_passed_to_answer_extractor(self):
+        (
+            assistant,
+            knowledge_base,
+            context_validator,
+            answer_extractor,
+            _,
+        ) = self.create_assistant()
+
+        question = "What is RAG and how does it work?"
+
+        class DetailedQueryDecomposer:
+            def decompose_detailed(self, question):
+                assert question == "What is RAG and how does it work?"
+                return [
+                    {
+                        "aspect": "original",
+                        "question": question,
+                    },
+                    {
+                        "aspect": "definition",
+                        "question": "What is RAG?",
+                    },
+                    {
+                        "aspect": "workflow",
+                        "question": "How does RAG work?",
+                    },
+                ]
+
+            def decompose(self, question):
+                raise AssertionError(
+                    "Should use decompose_detailed() when available"
+                )
+
+        assistant.query_decomposer = DetailedQueryDecomposer()
+
+        document = create_document(
+            "doc-1",
+            "RAG combines retrieval and generation.",
+        )
+
+        knowledge_base.search.return_value = [document]
+        context_validator.is_relevant.return_value = True
+
+        answer_extractor.extract_candidates.return_value = [
+            "RAG combines retrieval and generation."
+        ]
+
+        assistant.chat(question)
+
+        assert knowledge_base.search.call_count == 3
+
+        answer_extractor.extract_candidates.assert_called_once()
+
+        aspect_queries = (
+            answer_extractor.extract_candidates.call_args.kwargs[
+                "aspect_queries"
+            ]
+        )
+
+        assert aspect_queries == [
+            {
+                "aspect": "definition",
+                "question": "What is RAG?",
+            },
+            {
+                "aspect": "workflow",
+                "question": "How does RAG work?",
+            },
+        ]
     def test_retrieval_results_are_aggregated_by_rrf(self):
         (
             assistant,
@@ -773,4 +863,148 @@ class TestAssistantQueryDecomposition:
         assert knowledge_base.search.call_count == 2
 
         answer_extractor.extract_candidates.assert_called_once()
+
+
+
+
+from types import SimpleNamespace
+
+
+def create_adaptive_rag_assistant():
+    generator = MagicMock()
+    prompt_builder = MagicMock()
+    knowledge_base = MagicMock()
+    answer_extractor = MagicMock()
+    answer_selector = MagicMock()
+    adaptive_retriever = MagicMock()
+    query_plan_builder = MagicMock()
+    evidence_context_builder = MagicMock()
+    query_decomposer = MagicMock()
+
+    def select_with_relevance(candidates, context):
+        texts = [
+            candidate["sentence"]
+            if isinstance(candidate, dict)
+            else candidate
+            for candidate in candidates
+        ]
+
+        return SimpleNamespace(
+            sentences=[{"sentence": sentence} for sentence in texts],
+            texts=texts,
+            top_relevance=1.0,
+            aspects=[],
+            uncovered_aspects=[],
+            rejected=[],
+        )
+
+    answer_selector.select.side_effect = select_with_relevance
+
+    query_plan = MagicMock()
+    query_plan_builder.build.return_value = query_plan
+
+    assistant = Assistant(
+        generator=generator,
+        prompt_builder=prompt_builder,
+        knowledge_base=knowledge_base,
+        answer_extractor=answer_extractor,
+        answer_selector=answer_selector,
+        answer_verifier=MagicMock(),
+        adaptive_retriever=adaptive_retriever,
+        query_plan_builder=query_plan_builder,
+        evidence_context_builder=evidence_context_builder,
+        query_decomposer=query_decomposer,
+    )
+
+    return SimpleNamespace(
+        assistant=assistant,
+        adaptive_retriever=adaptive_retriever,
+        query_plan_builder=query_plan_builder,
+        evidence_context_builder=evidence_context_builder,
+        answer_extractor=answer_extractor,
+        answer_selector=answer_selector,
+        generator=generator,
+    )
+
+
+class TestAssistantAdaptiveRAG:
+
+    def test_returns_no_knowledge_when_no_evidence_is_found(self):
+        components = create_adaptive_rag_assistant()
+
+        components.adaptive_retriever.retrieve.return_value = (
+            SimpleNamespace(
+                evidence=[],
+                decision=SimpleNamespace(sufficient=False),
+                iterations=1,
+                stop_reason="NO_NEW_EVIDENCE",
+            )
+        )
+
+        result = components.assistant.chat("What is Python?")
+
+        assert result == Assistant.NO_KNOWLEDGE_MESSAGE
+
+        components.adaptive_retriever.retrieve.assert_called_once()
+        components.answer_extractor.extract_candidates.assert_not_called()
+
+    def test_returns_unsupported_when_evidence_is_insufficient(self):
+        components = create_adaptive_rag_assistant()
+
+        evidence = [MagicMock()]
+
+        components.adaptive_retriever.retrieve.return_value = (
+            SimpleNamespace(
+                evidence=evidence,
+                decision=SimpleNamespace(sufficient=False),
+                iterations=2,
+                stop_reason="MAX_ITERATIONS_REACHED",
+            )
+        )
+
+        result = components.assistant.chat("What is Python?")
+
+        assert result == Assistant.UNSUPPORTED_ANSWER_MESSAGE
+
+        components.evidence_context_builder.build.assert_not_called()
+        components.answer_extractor.extract_candidates.assert_not_called()
+
+    def test_extracts_answer_when_evidence_is_sufficient(self):
+        components = create_adaptive_rag_assistant()
+
+        evidence = [MagicMock()]
+        context = (
+            "[Document 1 | Source: python.txt | Type: PRIMARY]\n"
+            "Python is a programming language."
+        )
+
+        components.adaptive_retriever.retrieve.return_value = (
+            SimpleNamespace(
+                evidence=evidence,
+                decision=SimpleNamespace(sufficient=True),
+                iterations=1,
+                stop_reason="THRESHOLD_REACHED",
+            )
+        )
+
+        components.evidence_context_builder.build.return_value = context
+
+        components.answer_extractor.extract_candidates.return_value = [
+            "Python is a programming language."
+        ]
+
+        result = components.assistant.chat("What is Python?")
+
+        assert result == "Python is a programming language."
+
+        components.evidence_context_builder.build.assert_called_once_with(
+            evidence
+        )
+
+        components.answer_extractor.extract_candidates.assert_called_once_with(
+            question="What is Python?",
+            context=context,
+        )
+
+        components.generator.generate.assert_not_called()
 

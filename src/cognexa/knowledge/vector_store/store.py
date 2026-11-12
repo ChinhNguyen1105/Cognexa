@@ -208,6 +208,85 @@ class VectorStore:
             if parent_id in parent_map
         ]
 
+    def get_child_documents(
+        self,
+        parent_id: str,
+    ) -> list[dict[str, Any]]:
+        """Retrieve all child chunks belonging to a parent."""
+
+        if not isinstance(parent_id, str) or not parent_id.strip():
+            raise ValueError("parent_id must be a non-empty string.")
+
+        results = self.collection.get(
+            where={"parent_id": parent_id},
+            include=["documents", "metadatas"],
+        )
+
+        ids = results["ids"]
+        documents = results["documents"] or []
+        metadatas = results["metadatas"] or []
+
+        children = [
+            {
+                "id": chunk_id,
+                "content": content,
+                "metadata": metadata or {},
+            }
+            for chunk_id, content, metadata in zip(
+                ids,
+                documents,
+                metadatas,
+            )
+        ]
+
+        def chunk_order(item: dict[str, Any]) -> tuple[int, int]:
+            position = item["metadata"].get("chunk_index")
+
+            if isinstance(position, int) and not isinstance(position, bool):
+                return (0, position)
+
+            return (1, 0)
+
+        children.sort(key=chunk_order)
+
+        return children
+
+    def get_all_documents(
+        self,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        """
+        Retrieve all child documents using pagination.
+        """
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0:
+            raise ValueError("limit must be a positive integer")
+
+        if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
+            raise ValueError("offset must be a non-negative integer")
+
+        results = self.collection.get(
+            limit=limit,
+            offset=offset,
+            include=["documents", "metadatas"],
+        )
+
+        ids = results["ids"]
+        documents = results["documents"] or []
+        metadatas = results["metadatas"] or []
+
+        return [
+            {
+                "id": doc_id,
+                "content": content,
+                "metadata": metadata or {},
+            }
+            for doc_id, content, metadata in zip(
+                ids,
+                documents,
+                metadatas,
+            )
+        ]
     def search(
         self,
         query_embedding: list[float],
@@ -300,3 +379,5 @@ class VectorStore:
             name=self.parent_collection_name,
             metadata={"hnsw:space": "cosine"},
         )
+
+

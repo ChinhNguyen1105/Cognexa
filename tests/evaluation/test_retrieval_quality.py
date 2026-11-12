@@ -192,3 +192,5 @@ def test_dense_retrieval_quality(
     print(f"Chunk Precision@{top_k}: {average_precision:.4f}")
     print(f"MRR@{top_k}: {average_mrr:.4f}")
 
+
+

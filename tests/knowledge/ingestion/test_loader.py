@@ -119,3 +119,5 @@ class TestDocumentLoader:
         # Assert
         assert fake_loader.called is True
         assert result["metadata"]["file_type"] == "txt"
+
+

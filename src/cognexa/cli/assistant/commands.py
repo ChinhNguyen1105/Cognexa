@@ -2,6 +2,8 @@
 from cognexa.assistant.prompt import PromptBuilder
 from cognexa.assistant.answer_extractor import AnswerExtractor
 from cognexa.assistant.answer_selector import AnswerSelector
+from cognexa.assistant.answerability_checker import AnswerabilityChecker
+from cognexa.assistant.diagnostics import attach_diagnostics
 
 from cognexa.llm.config import LLMConfig
 from cognexa.llm.generator import TextGenerator
@@ -14,14 +16,55 @@ from cognexa.knowledge.ingestion.pipeline import IngestionPipeline
 from cognexa.knowledge.processing.chunker import TextChunker
 from cognexa.knowledge.embedding.embedder import TextEmbedder
 from cognexa.knowledge.vector_store.store import VectorStore
-from cognexa.knowledge.retrieval.retriever import Retriever
-from cognexa.knowledge.validation.answer_verifier import AnswerVerifier
-from cognexa.knowledge.reranking.reranker import (
+
+from cognexa.knowledge.retrieval.candidates.dense_retriever import (
+    Retriever,
+    DenseRetriever,
+)
+from cognexa.knowledge.retrieval.candidates.sparse_retriever import (
+    BM25Retriever,
+)
+from cognexa.knowledge.retrieval.ranking.reranker import (
     CrossEncoderReranker,
 )
+from cognexa.knowledge.retrieval.ranking.cross_encoder_reranker import (
+    CrossEncoderCandidateReranker,
+)
+from cognexa.knowledge.retrieval.fusion.rrf_fusion import (
+    ReciprocalRankFusion,
+)
+from cognexa.knowledge.retrieval.expansion.evidence_expander import (
+    EvidenceExpander,
+)
+from cognexa.knowledge.retrieval.coverage.coverage_analyzer import (
+    CoverageAnalyzer,
+)
+from cognexa.knowledge.retrieval.coverage.sufficiency_checker import (
+    SufficiencyChecker,
+)
+from cognexa.knowledge.retrieval.adaptive_retriever import (
+    AdaptiveRetriever,
+)
+from cognexa.knowledge.retrieval.query_plan_builder import (
+    QueryPlanBuilder,
+)
+from cognexa.knowledge.retrieval.evidence_context_builder import (
+    EvidenceContextBuilder,
+)
+
+from cognexa.verification import AnswerVerifier
+
 
 VECTOR_STORE_PATH = "data/vector_store"
 COLLECTION_NAME = "cognexa_knowledge"
+
+# Refusal calibration for the answer flow. None disables the check.
+# Read "top_relevance" from the [DEBUG ANSWERABILITY CHECKER] output for
+# answerable and out-of-scope questions, then set a value between the two.
+MIN_TOP_RELEVANCE = None
+# Refuse when verified evidence covers less than this share of the aspects
+# of a decomposed question (0.0 still refuses when no aspect is covered).
+MIN_ASPECT_COVERAGE = 0.0
 
 
 def create_vector_store() -> VectorStore:
@@ -79,12 +122,18 @@ def create_prompt_builder() -> PromptBuilder:
 
 def create_knowledge_base(
     embedder: TextEmbedder | None = None,
+    *,
+    vector_store: VectorStore | None = None,
+    initialize_sparse_index: bool = True,
 ) -> KnowledgeBase:
     """
     Create the KnowledgeBase used by the AI Assistant.
+
+    The vector store can be injected to ensure that
+    ingestion and retrieval share the same instance.
     """
     embedder = embedder or create_embedder()
-    vector_store = create_vector_store()
+    vector_store = vector_store or create_vector_store()
 
     retriever = Retriever(
         embedder=embedder,
@@ -98,10 +147,19 @@ def create_knowledge_base(
         vector_store=vector_store,
     )
 
-    return KnowledgeBase(
+    sparse_retriever = BM25Retriever()
+
+    knowledge_base = KnowledgeBase(
         ingestion_pipeline=ingestion_pipeline,
         retriever=retriever,
+        sparse_retriever=sparse_retriever,
     )
+
+    if initialize_sparse_index:
+        indexed_count = knowledge_base.refresh_sparse_index()
+        print(f"BM25 index initialized: {indexed_count} documents.")
+
+    return knowledge_base
 
 
 def create_ingestion_pipeline() -> IngestionPipeline:
@@ -118,24 +176,26 @@ def create_ingestion_pipeline() -> IngestionPipeline:
 
 def create_assistant() -> Assistant:
     """
-    Create the RAG-enabled Cognexa Assistant.
+    Create the Adaptive RAG-enabled Cognexa Assistant.
     """
     generator = create_generator()
     prompt_builder = create_prompt_builder()
 
+    # Shared infrastructure.
     embedder = create_embedder()
+    vector_store = create_vector_store()
 
     knowledge_base = create_knowledge_base(
         embedder=embedder,
+        vector_store=vector_store,
     )
 
+    # Answer verification and extraction.
     answer_verifier = AnswerVerifier()
 
-    # Share one CrossEncoder instance between
-    # retrieval reranking and answer extraction.
+    # One CrossEncoder instance shared by both components.
     reranker = CrossEncoderReranker()
 
-    # Extractor: generate and rank sentence candidates.
     answer_extractor = AnswerExtractor(
         reranker=reranker,
         min_candidates=2,
@@ -143,9 +203,57 @@ def create_assistant() -> Assistant:
         score_gap_threshold=3.0,
     )
 
-    # Selector: verify evidence and select final sentences.
     answer_selector = AnswerSelector(
         answer_verifier=answer_verifier,
+    )
+
+    # Adaptive retrieval pipeline.
+    dense_retriever = DenseRetriever(
+        embedder=embedder,
+        vector_store=vector_store,
+    )
+
+    sparse_retriever = knowledge_base.sparse_retriever
+
+    fusion = ReciprocalRankFusion()
+
+    candidate_reranker = CrossEncoderCandidateReranker(
+        scorer=reranker,
+    )
+
+    evidence_expander = EvidenceExpander(
+        vector_store=vector_store,
+    )
+
+    coverage_analyzer = CoverageAnalyzer()
+
+    sufficiency_checker = SufficiencyChecker(
+        min_coverage=0.7,
+    )
+
+    adaptive_retriever = AdaptiveRetriever(
+        dense_retriever=dense_retriever,
+        sparse_retriever=sparse_retriever,
+        fusion=fusion,
+        reranker=candidate_reranker,
+        expander=evidence_expander,
+        coverage_analyzer=coverage_analyzer,
+        sufficiency_checker=sufficiency_checker,
+        top_k=5,
+        max_iterations=3,
+    )
+
+    answerability_checker = AnswerabilityChecker(
+        min_top_relevance=MIN_TOP_RELEVANCE,
+        min_aspect_coverage=MIN_ASPECT_COVERAGE,
+    )
+
+    attach_diagnostics(
+        adaptive_retriever=adaptive_retriever,
+        answer_extractor=answer_extractor,
+        answer_selector=answer_selector,
+        answer_verifier=answer_verifier,
+        answerability_checker=answerability_checker,
     )
 
     return Assistant(
@@ -155,9 +263,11 @@ def create_assistant() -> Assistant:
         answer_verifier=answer_verifier,
         answer_extractor=answer_extractor,
         answer_selector=answer_selector,
-        retrieval_reranker=reranker,
+        answerability_checker=answerability_checker,
+        adaptive_retriever=adaptive_retriever,
+        query_plan_builder=QueryPlanBuilder(),
+        evidence_context_builder=EvidenceContextBuilder(),
         retrieval_top_k=3,
-        reranking_top_k=5,
     )
 
 
@@ -165,9 +275,11 @@ def add_document(file_path: str):
     """
     Add a document to the knowledge base.
     """
-    pipeline = create_ingestion_pipeline()
+    knowledge_base = create_knowledge_base(
+        initialize_sparse_index=False,
+    )
 
-    result = pipeline.ingest(file_path)
+    result = knowledge_base.add_document(file_path)
 
     if result["chunk_count"] == 0:
         print("No text content found in the document.")
@@ -185,6 +297,7 @@ def chat():
 
     print("Cognexa Assistant")
     print("RAG mode: enabled")
+    print("Retrieval mode: Adaptive RAG")
     print("Type 'exit' to quit.")
     print()
 
@@ -201,3 +314,5 @@ def chat():
 
         print(f"Cognexa: {response}")
         print()
+
+

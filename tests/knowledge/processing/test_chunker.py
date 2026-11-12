@@ -1,4 +1,5 @@
-﻿import pytest
+﻿
+import pytest
 
 from cognexa.knowledge.processing.chunker import TextChunker
 
@@ -88,9 +89,7 @@ class TestTextChunker:
             current_chunk = chunks[index]
             next_chunk = chunks[index + 1]
 
-            assert (
-                current_chunk[-5:] == next_chunk[:5]
-            )
+            assert current_chunk[-5:] == next_chunk[:5]
 
     def test_chunk_size_zero_raises_error(self):
         with pytest.raises(ValueError, match="chunk_size"):
@@ -128,3 +127,161 @@ class TestTextChunker:
         # Act & Assert
         with pytest.raises(TypeError, match="must be a string"):
             chunker.chunk_text(123)
+
+    # ---------------------------------------------------------
+    # List metadata tests
+    # ---------------------------------------------------------
+
+    def test_chunk_document_detects_list_in_single_child(self):
+        # Arrange
+        parent_chunker = TextChunker(
+            chunk_size=500,
+            chunk_overlap=0,
+        )
+        child_chunker = TextChunker(
+            chunk_size=500,
+            chunk_overlap=0,
+        )
+        text = (
+            "Available tools:\n"
+            "- Python\n"
+            "- Git\n"
+            "- Linux"
+        )
+
+        # Act
+        result = parent_chunker.chunk_document(
+            text=text,
+            child_chunker=child_chunker,
+        )
+
+        # Assert
+        assert len(result) == 1
+
+        children = result[0]["children"]
+
+        assert len(children) == 1
+        assert children[0]["list_groups"] == [
+            {
+                "group_id": 0,
+                "item_indices": [0, 1, 2],
+            }
+        ]
+
+    def test_chunk_document_preserves_list_group_across_children(self):
+        # Arrange
+        parent_chunker = TextChunker(
+            chunk_size=500,
+            chunk_overlap=0,
+        )
+        child_chunker = TextChunker(
+            chunk_size=40,
+            chunk_overlap=0,
+        )
+        text = (
+            "Available tools:\n"
+            "- Python programming\n"
+            "- Git version control\n"
+            "- Linux operating system\n"
+            "- Docker containerization\n"
+            "- FastAPI web framework"
+        )
+
+        # Act
+        result = parent_chunker.chunk_document(
+            text=text,
+            child_chunker=child_chunker,
+        )
+
+        # Assert
+        children = result[0]["children"]
+
+        assert len(children) > 1
+
+        groups = [
+            group
+            for child in children
+            for group in child["list_groups"]
+        ]
+
+        assert all(group["group_id"] == 0 for group in groups)
+
+        retrieved_indices = {
+            index
+            for group in groups
+            for index in group["item_indices"]
+        }
+
+        assert retrieved_indices == {0, 1, 2, 3, 4}
+
+    def test_chunk_document_detects_independent_lists(self):
+        # Arrange
+        parent_chunker = TextChunker(
+            chunk_size=1000,
+            chunk_overlap=0,
+        )
+        child_chunker = TextChunker(
+            chunk_size=1000,
+            chunk_overlap=0,
+        )
+        text = (
+            "Programming languages:\n"
+            "- Python\n"
+            "- Java\n"
+            "\n"
+            "Databases:\n"
+            "- MySQL\n"
+            "- PostgreSQL"
+        )
+
+        # Act
+        result = parent_chunker.chunk_document(
+            text=text,
+            child_chunker=child_chunker,
+        )
+
+        # Assert
+        children = result[0]["children"]
+
+        assert len(children) == 1
+
+        groups = children[0]["list_groups"]
+
+        assert groups == [
+            {
+                "group_id": 0,
+                "item_indices": [0, 1],
+            },
+            {
+                "group_id": 1,
+                "item_indices": [0, 1],
+            },
+        ]
+
+    def test_chunk_document_does_not_detect_normal_prose_as_list(self):
+        # Arrange
+        parent_chunker = TextChunker(
+            chunk_size=500,
+            chunk_overlap=0,
+        )
+        child_chunker = TextChunker(
+            chunk_size=500,
+            chunk_overlap=0,
+        )
+        text = (
+            "Python is a programming language.\n"
+            "It supports object-oriented programming.\n"
+            "It is widely used in AI development."
+        )
+
+        # Act
+        result = parent_chunker.chunk_document(
+            text=text,
+            child_chunker=child_chunker,
+        )
+
+        # Assert
+        children = result[0]["children"]
+
+        assert len(children) == 1
+        assert children[0]["list_groups"] == []

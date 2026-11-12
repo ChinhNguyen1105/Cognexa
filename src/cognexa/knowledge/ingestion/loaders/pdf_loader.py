@@ -101,3 +101,5 @@ class PdfLoader(BaseLoader):
                 f"Failed to read PDF document: {path}. "
                 f"Reason: {error}"
             ) from error
+
+

@@ -1,4 +1,5 @@
-﻿from pathlib import Path
+﻿import json
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -116,6 +117,10 @@ class IngestionPipeline:
                         "parent_id": parent_id,
                         "parent_index": parent_index,
                         "chunk_index": child["chunk_index"],
+                        "list_groups": json.dumps(
+                            child.get("list_groups", []),
+                            ensure_ascii=False,
+                        ),
                     }
                 )
 
@@ -153,3 +158,4 @@ class IngestionPipeline:
             "parent_ids": parent_ids,
             "child_ids": child_ids,
         }
+

@@ -128,3 +128,5 @@ def test_search_propagates_error(knowledge_base, retriever):
 
     with pytest.raises(ValueError, match="Invalid query"):
         knowledge_base.search("Some query")
+
+

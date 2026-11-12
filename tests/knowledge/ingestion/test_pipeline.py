@@ -292,3 +292,5 @@ def test_ingest_propagates_loader_error(
     embedder.embed_texts.assert_not_called()
     vector_store.add_documents.assert_not_called()
     vector_store.add_parent_documents.assert_not_called()
+
+

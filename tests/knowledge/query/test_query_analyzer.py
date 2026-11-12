@@ -78,3 +78,5 @@ class TestQueryAnalyzer:
     def test_non_string_query_raises_type_error(self):
         with pytest.raises(TypeError, match="query must be a string"):
             self.analyzer.is_complex(None)
+
+

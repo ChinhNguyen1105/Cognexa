@@ -1,4 +1,4 @@
-from transformers import AutoTokenizer
+﻿from transformers import AutoTokenizer
 
 
 class TextTokenizer:
@@ -26,3 +26,4 @@ class TextTokenizer:
             token_ids,
             skip_special_tokens=True,
         )
+

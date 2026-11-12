@@ -70,3 +70,5 @@ def test_init_rejects_negative_max_distance():
         match="max_distance must be greater than or equal to 0",
     ):
         ContextValidator(max_distance=-0.1)
+
+

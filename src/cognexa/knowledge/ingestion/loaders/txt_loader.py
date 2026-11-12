@@ -68,3 +68,5 @@ class TxtLoader(BaseLoader):
             f"Unable to decode document: {path}. "
             "Please provide a valid UTF-8 encoded TXT file."
         )
+
+

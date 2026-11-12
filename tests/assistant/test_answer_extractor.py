@@ -284,3 +284,108 @@ def test_missing_aspect_score_is_not_fabricated(context):
     extractor = AnswerExtractor(FakeReranker(), min_candidates=1)
     result = extractor.extract_candidates("main", context, ["one aspect"])
     assert all("one aspect" in item["aspect_scores"] for item in result)
+
+
+
+def test_query_overlap_ratio_is_asymmetric():
+    question = "python programming language"
+    sentence = "python is a popular programming language"
+
+    overlap = AnswerExtractor._query_overlap_ratio(
+        question,
+        sentence,
+    )
+
+    assert overlap == pytest.approx(1.0)
+
+
+def test_query_overlap_ratio_returns_zero_without_content_tokens():
+    overlap = AnswerExtractor._query_overlap_ratio(
+        "the is a",
+        "and or but",
+    )
+
+    assert overlap == 0.0
+
+
+def test_ranking_adjustment_penalizes_query_repetition():
+    question = "python programming language"
+    sentence = "python programming language"
+
+    adjustment, overlap = AnswerExtractor._ranking_adjustment(
+        question,
+        sentence,
+    )
+
+    assert overlap == pytest.approx(1.0)
+    assert adjustment < 0.0
+
+
+def test_ranking_adjustment_rewards_informative_sentence():
+    question = "why does python support object oriented programming"
+    sentence = (
+        "Python supports object-oriented programming because "
+        "it provides classes and inheritance."
+    )
+
+    adjustment, _ = AnswerExtractor._ranking_adjustment(
+        question,
+        sentence,
+    )
+
+    assert adjustment > 0.0
+
+
+def test_jaccard_similarity_returns_one_for_identical_content():
+    similarity = AnswerExtractor._jaccard_similarity(
+        "python programming language",
+        "python programming language",
+    )
+
+    assert similarity == pytest.approx(1.0)
+
+
+def test_jaccard_similarity_uses_union_of_tokens():
+    similarity = AnswerExtractor._jaccard_similarity(
+        "python programming language",
+        "python programming language tutorial",
+    )
+
+    assert similarity == pytest.approx(0.75)
+
+
+def test_jaccard_similarity_returns_zero_for_empty_tokens():
+    similarity = AnswerExtractor._jaccard_similarity(
+        "the is a",
+        "and or but",
+    )
+
+    assert similarity == 0.0
+
+
+def test_jaccard_penalty_does_not_penalize_informative_sentence():
+    question = "python programming language"
+    sentence = (
+        "Python programming language supports web development "
+        "and machine learning applications."
+    )
+
+    adjustment, _ = AnswerExtractor._ranking_adjustment(
+        question,
+        sentence,
+    )
+
+    assert adjustment == 0.0
+
+
+def test_jaccard_penalty_reduces_repetitive_sentence_score():
+    question = "python programming language"
+    sentence = "Python programming language"
+
+    adjustment, _ = AnswerExtractor._ranking_adjustment(
+        question,
+        sentence,
+    )
+
+    assert adjustment == pytest.approx(-0.35)
+
