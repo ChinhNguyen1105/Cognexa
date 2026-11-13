@@ -10,8 +10,8 @@
 class VerificationDecision:
     def __init__(
         self,
-        entailment_threshold: float = 0.75,
-        contradiction_threshold: float = 0.75,
+        entailment_threshold: float = 0.70,
+        contradiction_threshold: float = 0.70,
         uncertainty_threshold: float = 0.50,
     ):
         thresholds = (
@@ -51,72 +51,108 @@ class VerificationDecision:
                 reason="No evidence candidates provided.",
             )
 
-        best_entailment = max(
-            candidates,
-            key=lambda item: item[1].entailment,
-        )
-        best_contradiction = max(
-            candidates,
-            key=lambda item: item[1].contradiction,
-        )
+        # Each candidate must be evaluated independently.
+        conflicting = [
+            (evidence, scores)
+            for evidence, scores in candidates
+            if (
+                scores.entailment >= self.entailment_threshold
+                and scores.contradiction >= self.contradiction_threshold
+            )
+        ]
 
-        entailment = best_entailment[1].entailment
-        contradiction = best_contradiction[1].contradiction
+        if conflicting:
+            selected_evidence, selected_scores = max(
+                conflicting,
+                key=lambda item: min(
+                    item[1].entailment,
+                    item[1].contradiction,
+                ),
+            )
 
-        support_found = entailment >= self.entailment_threshold
-        contradiction_found = (
-            contradiction >= self.contradiction_threshold
-        )
-
-        if support_found and contradiction_found:
             status = SentenceStatus.UNCERTAIN
-            selected_evidence = [
-                best_entailment[0],
-                best_contradiction[0],
+            evidence = [selected_evidence]
+            reason = "Conflicting signals found in the same evidence candidate."
+
+        else:
+            supporting = [
+                (evidence, scores)
+                for evidence, scores in candidates
+                if scores.entailment >= self.entailment_threshold
             ]
-            reason = "Conflicting evidence found."
 
-        elif contradiction_found:
-            status = SentenceStatus.CONTRADICTED
-            selected_evidence = [best_contradiction[0]]
-            reason = "Evidence contradicts the answer."
+            contradicting = [
+                (evidence, scores)
+                for evidence, scores in candidates
+                if scores.contradiction >= self.contradiction_threshold
+            ]
 
-        elif support_found:
-            status = SentenceStatus.SUPPORTED
-            selected_evidence = [best_entailment[0]]
-            reason = "Evidence entails the answer."
+            inconclusive = [
+                (evidence, scores)
+                for evidence, scores in candidates
+                if max(
+                    scores.entailment,
+                    scores.contradiction,
+                ) >= self.uncertainty_threshold
+            ]
 
-        elif max(
-            entailment,
-            contradiction,
-        ) >= self.uncertainty_threshold:
-            status = SentenceStatus.UNCERTAIN
-            selected_evidence = [
-                max(
-                    candidates,
+            if supporting:
+                selected_evidence, selected_scores = max(
+                    supporting,
+                    key=lambda item: item[1].entailment,
+                )
+
+                status = SentenceStatus.SUPPORTED
+                evidence = [selected_evidence]
+                reason = "Evidence entails the answer."
+
+            elif contradicting:
+                selected_evidence, selected_scores = max(
+                    contradicting,
+                    key=lambda item: item[1].contradiction,
+                )
+
+                status = SentenceStatus.CONTRADICTED
+                evidence = [selected_evidence]
+                reason = "Evidence contradicts the answer."
+
+            elif inconclusive:
+                selected_evidence, selected_scores = max(
+                    inconclusive,
                     key=lambda item: max(
                         item[1].entailment,
                         item[1].contradiction,
                     ),
-                )[0]
-            ]
-            reason = "NLI evidence is inconclusive."
+                )
 
-        else:
-            status = SentenceStatus.UNSUPPORTED
-            selected_evidence = []
-            reason = "No sufficient entailment found."
+                status = SentenceStatus.UNCERTAIN
+                evidence = [selected_evidence]
+                reason = "NLI evidence is inconclusive."
+
+            else:
+                selected_scores = None
+                status = SentenceStatus.UNSUPPORTED
+                evidence = []
+                reason = "No sufficient entailment found."
 
         return SentenceVerification(
             sentence=sentence,
             status=status,
             method=VerificationMethod.NLI,
-            entailment_score=entailment,
-            contradiction_score=contradiction,
+            entailment_score=(
+                selected_scores.entailment
+                if selected_scores is not None
+                else max(item[1].entailment for item in candidates)
+            ),
+            contradiction_score=(
+                selected_scores.contradiction
+                if selected_scores is not None
+                else max(item[1].contradiction for item in candidates)
+            ),
             neutral_score=max(
                 item[1].neutral for item in candidates
             ),
-            evidence=list(dict.fromkeys(selected_evidence)),
+            evidence=list(dict.fromkeys(evidence)),
             reason=reason,
         )
 

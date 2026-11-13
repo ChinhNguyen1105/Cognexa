@@ -924,10 +924,112 @@ def create_adaptive_rag_assistant():
         answer_extractor=answer_extractor,
         answer_selector=answer_selector,
         generator=generator,
+        query_decomposer=query_decomposer,
     )
 
 
 class TestAssistantAdaptiveRAG:
+
+    def test_query_decomposition_and_context_are_used_for_adaptive_retrieval(self):
+        components = create_adaptive_rag_assistant()
+        components.query_decomposer.decompose_detailed.return_value = [
+            {"aspect": "cause", "question": "What causes overfitting?"},
+            {"aspect": "prevention", "question": "How can overfitting be prevented?"},
+        ]
+
+        evidence = [
+            SimpleNamespace(
+                evidence_type=SimpleNamespace(value="primary"),
+                document=SimpleNamespace(
+                    chunk=SimpleNamespace(
+                        chunk_id="chunk-1",
+                        content="Overfitting happens when a model memorizes training examples.",
+                    )
+                ),
+            )
+        ]
+        components.adaptive_retriever.retrieve.return_value = SimpleNamespace(
+            evidence=evidence,
+            decision=SimpleNamespace(sufficient=True),
+            iterations=1,
+            stop_reason="THRESHOLD_REACHED",
+        )
+        components.evidence_context_builder.build.return_value = (
+            "[Document 1 | Source: examples.txt | Type: PRIMARY]\n"
+            "Overfitting happens when a model memorizes training examples."
+        )
+        components.answer_extractor.extract_candidates.return_value = [
+            {"sentence": "Overfitting happens when a model memorizes training examples.", "score": 0.9}
+        ]
+        components.answer_selector.select.return_value = SimpleNamespace(
+            sentences=[{"sentence": "Overfitting happens when a model memorizes training examples."}],
+            texts=["Overfitting happens when a model memorizes training examples."],
+            top_relevance=0.9,
+            aspects=[],
+            uncovered_aspects=[],
+            rejected=[],
+        )
+
+        result = components.assistant.chat("What causes overfitting?")
+
+        assert result == "Overfitting happens when a model memorizes training examples."
+        components.query_decomposer.decompose_detailed.assert_called_once_with("What causes overfitting?")
+        components.query_plan_builder.build.assert_called_once()
+        build_kwargs = components.query_plan_builder.build.call_args.kwargs
+        assert build_kwargs["original_question"] == "What causes overfitting?"
+        assert [item["question"] for item in build_kwargs["decomposed_questions"]] == [
+            "What causes overfitting?",
+            "How can overfitting be prevented?",
+        ]
+        components.evidence_context_builder.build.assert_called_once_with(evidence)
+
+    def test_fallback_context_extracts_real_evidence_text_without_object_serialization(self):
+        assistant = Assistant(
+            generator=MagicMock(),
+            prompt_builder=MagicMock(),
+            adaptive_retriever=MagicMock(),
+            query_plan_builder=MagicMock(),
+            evidence_context_builder=None,
+            answer_extractor=MagicMock(),
+            answer_selector=MagicMock(),
+            answerability_checker=MagicMock(),
+        )
+
+        evidence = [
+            SimpleNamespace(
+                evidence_type=SimpleNamespace(value="primary"),
+                document=SimpleNamespace(
+                    chunk=SimpleNamespace(content="Actual evidence text from nested chunk.")
+                ),
+            )
+        ]
+        assistant.adaptive_retriever.retrieve.return_value = SimpleNamespace(
+            evidence=evidence,
+            decision=SimpleNamespace(sufficient=True),
+            iterations=1,
+            stop_reason="OK",
+        )
+        assistant.answer_extractor.extract_candidates.return_value = [
+            {"sentence": "Actual evidence text from nested chunk.", "score": 0.8}
+        ]
+        assistant.answer_selector.select.return_value = SimpleNamespace(
+            sentences=[{"sentence": "Actual evidence text from nested chunk."}],
+            texts=["Actual evidence text from nested chunk."],
+            top_relevance=0.8,
+            aspects=[],
+            uncovered_aspects=[],
+            rejected=[],
+        )
+        assistant.answerability_checker.assess.return_value = SimpleNamespace(
+            status="SUFFICIENT",
+        )
+
+        result = assistant.chat("What is relevant?")
+
+        assert result == "Actual evidence text from nested chunk."
+        assert "SimpleNamespace" not in assistant.last_context
+        assert "Actual evidence text from nested chunk." in assistant.last_context
+        assert "chunk" in assistant.last_context.lower()
 
     def test_returns_no_knowledge_when_no_evidence_is_found(self):
         components = create_adaptive_rag_assistant()

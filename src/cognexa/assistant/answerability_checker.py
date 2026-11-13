@@ -15,12 +15,20 @@ class AnswerabilityResult:
 
 
 class AnswerabilityChecker:
+    SYSTEM_PROMPT = (
+        "Your task is to determine if the provided context contains ANY relevant "
+        "information to address the user's query, even partially. Return 'True' if a "
+        "partial or full answer can be formulated. Return 'False' ONLY IF the context "
+        "is entirely irrelevant or contains absolutely no information related to the query."
+    )
+
     def __init__(
         self,
         min_evidence_sentences: int = 1,
         allow_partial: bool = True,
         min_top_relevance: float | None = 0.0,
         min_aspect_coverage: float = 0.0,
+        system_prompt: str | None = None,
     ):
         if min_evidence_sentences <= 0:
             raise ValueError("min_evidence_sentences must be greater than zero.")
@@ -32,6 +40,7 @@ class AnswerabilityChecker:
         self.allow_partial = allow_partial
         self.min_top_relevance = min_top_relevance
         self.min_aspect_coverage = min_aspect_coverage
+        self.system_prompt = system_prompt or self.SYSTEM_PROMPT
 
     def assess(self, question: str, selection) -> AnswerabilityResult:
         if hasattr(selection, "sentences"):

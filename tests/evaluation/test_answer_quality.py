@@ -6,6 +6,9 @@ from cognexa.knowledge.evaluation.metrics.context_recall import (
     calculate_context_evidence_recall,
     calculate_retrieved_evidence_recall,
 )
+from cognexa.knowledge.evaluation.metrics.answer_relevance import (
+    calculate_answer_question_relevance,
+)
 
 
 def normalize(text: str) -> str:
@@ -68,14 +71,31 @@ def calculate_lexical_answer_point_recall(
     return matched_tokens, total_tokens, recall
 
 
-def calculate_semantic_context_coverage(
+def verify_against_context(point: str, context: str, answer_verifier, window: int = 8, stride: int = 3):
+    sentences = split_sentences(context)
+    if not sentences:
+        return False
+
+    for i in range(0, len(sentences), stride):
+        premise = " ".join(sentences[i:i + window])
+        result = answer_verifier.verify(
+            answer=point,
+            evidence=[premise],
+        )
+        if getattr(result, "status", None) == VerificationStatus.SUPPORTED:
+            return True
+
+    return False
+
+
+def calculate_nli_context_coverage(
     context: str,
     expected_points: list[str],
     answer_verifier,
 ) -> tuple[int, int, float]:
     """
-    Measures how many expected answer points are supported
-    by the exact context used by Assistant.
+    Measures NLI-based coverage of expected answer points
+    using sentence-window evidence windows rather than the full context blob.
     """
     if not expected_points or not context or not context.strip():
         return 0, len(expected_points), 0.0
@@ -83,12 +103,7 @@ def calculate_semantic_context_coverage(
     matched = 0
 
     for point in expected_points:
-        result = answer_verifier.verify(
-            answer=point,
-            evidence=[context],
-        )
-
-        if getattr(result, "status", None) == VerificationStatus.SUPPORTED:
+        if verify_against_context(point, context, answer_verifier):
             matched += 1
 
     total = len(expected_points)
@@ -119,27 +134,28 @@ def calculate_evidence_support_rate(response: str, context: str, answer_verifier
 
     supported = 0
     for sentence in sentences:
-        result = answer_verifier.verify(
-            answer=sentence,
-            evidence=[context],
-        )
-        if getattr(result, "status", None) == VerificationStatus.SUPPORTED:
+        if verify_against_context(sentence, context, answer_verifier):
             supported += 1
 
     total = len(sentences)
     return supported, total, supported / total if total else 0.0
 
 
+
 def build_assistant(rag_environment):
     assistant = Assistant(
-        generator=None,
-        prompt_builder=None,
+        generator=rag_environment.generator,
+        prompt_builder=rag_environment.prompt_builder,
         knowledge_base=rag_environment.knowledge_base,
         context_validator=rag_environment.context_validator,
         answer_verifier=rag_environment.answer_verifier,
         answer_extractor=rag_environment.answer_extractor,
         answer_selector=rag_environment.answer_selector,
-        retrieval_top_k=5,
+        answerability_checker=getattr(rag_environment, "answerability_checker", None),
+        adaptive_retriever=rag_environment.adaptive_retriever,
+        query_plan_builder=getattr(rag_environment, "query_plan_builder", None) or __import__("cognexa.knowledge.retrieval.query_plan_builder", fromlist=["QueryPlanBuilder"]).QueryPlanBuilder(),
+        evidence_context_builder=getattr(rag_environment, "evidence_context_builder", None) or __import__("cognexa.knowledge.retrieval.evidence_context_builder", fromlist=["EvidenceContextBuilder"]).EvidenceContextBuilder(),
+        retrieval_top_k=10,
         query_decomposer=rag_environment.decomposer,
     )
 
@@ -152,11 +168,10 @@ def build_assistant(rag_environment):
     logger = configure_diagnostics()
     if not logger.disabled:
         logger.info(
-            "A5.1 BENCHMARK PIPELINE: legacy KnowledgeBase route; "
-            "adaptive_retriever is not attached to this Assistant."
+            "A5.1 BENCHMARK PIPELINE: adaptive retriever is attached and legacy KnowledgeBase route is disabled."
         )
         instrument_method(rag_environment.knowledge_base, "search", "KB_SEARCH")
-        instrument_method(rag_environment.retriever, "retrieve", "DENSE_RETRIEVER")
+        instrument_method(rag_environment.adaptive_retriever, "retrieve", "ADAPTIVE_RETRIEVER")
         instrument_method(assistant.answer_extractor, "extract_candidates", "EXTRACTOR")
         instrument_method(assistant.answer_verifier, "verify", "VERIFIER")
         instrument_method(assistant.answer_selector, "select_detailed", "SELECTOR")
@@ -189,6 +204,8 @@ def test_end_to_end_answer_quality(rag_environment, evaluation_dataset):
     total_expected_evidence = 0
     total_supported_sentences = 0
     total_answer_sentences = 0
+    total_answer_relevance_score = 0.0
+    answer_relevance_count = 0
 
     print("\n" + "=" * 80)
     print("END-TO-END RAG ANSWER QUALITY EVALUATION")
@@ -224,6 +241,16 @@ def test_end_to_end_answer_quality(rag_environment, evaluation_dataset):
             diagnostic_logger.info("========== QUESTION END id=%s ==========", question_id)
 
         if answerable:
+            answer_relevance = calculate_answer_question_relevance(
+                question=question,
+                answer=response,
+                reranker=rag_environment.reranker,
+            )
+
+            if answer_relevance is not None:
+                total_answer_relevance_score += answer_relevance
+                answer_relevance_count += 1
+
             expected_points = item.get("expected_answer_points") or item.get("expected_evidence") or []
             total_expected_points += len(expected_points)
 
@@ -275,7 +302,7 @@ def test_end_to_end_answer_quality(rag_environment, evaluation_dataset):
                     print(f"\n--- Document {index} ---")
                     print(document)
             context_matched, context_total, context_recall = (
-                calculate_semantic_context_coverage(
+                calculate_nli_context_coverage(
                     context=context,
                     expected_points=expected_points,
                     answer_verifier=assistant.answer_verifier,
@@ -329,8 +356,10 @@ def test_end_to_end_answer_quality(rag_environment, evaluation_dataset):
                 "answerable": True,
                 "rejected": rejected,
                 "token_recall": lexical_recall,
+                "answer_question_relevance": answer_relevance,
                 "semantic_point_recall": semantic_recall,
-                "semantic_context_coverage": context_recall,
+                "nli_context_coverage": context_recall,
+                "coverage_gap": context_recall - semantic_recall,
                 "retrieved_evidence_recall": retrieved_recall,
                 "context_evidence_recall": context_evidence_recall,
                 "evidence_support_rate": support_rate,
@@ -339,9 +368,15 @@ def test_end_to_end_answer_quality(rag_environment, evaluation_dataset):
             }
 
             print(f"Response: {response}")
+            print(
+                f"Answer-Question Relevance: {answer_relevance:.4f}"
+                if answer_relevance is not None
+                else "Answer-Question Relevance: N/A"
+            )
             print(f"Token recall: {lexical_matched}/{lexical_total} ({lexical_recall:.4f})")
             print(f"Semantic answer points: {semantic_matched}/{semantic_total} ({semantic_recall:.4f})")
-            print(f"Semantic context coverage: {context_matched}/{context_total} ({context_recall:.4f})")
+            print(f"NLI context coverage: {context_matched}/{context_total} ({context_recall:.4f})")
+            print(f"Coverage gap: {context_recall - semantic_recall:.4f}")
             print(f"Retrieved evidence recall: {retrieved_matched}/{evidence_total} ({retrieved_recall:.4f})")
             print(f"Context evidence recall: {context_evidence_matched_count}/{context_evidence_total} ({context_evidence_recall:.4f})")
             print(f"Evidence support: {supported}/{sentence_count} ({support_rate:.4f})")
@@ -373,6 +408,11 @@ def test_end_to_end_answer_quality(rag_environment, evaluation_dataset):
         if total_expected_evidence else 0.0
     )
     evidence_support_rate = total_supported_sentences / total_answer_sentences if total_answer_sentences else 0.0
+    answer_question_relevance = (
+        total_answer_relevance_score / answer_relevance_count
+        if answer_relevance_count
+        else 0.0
+    )
     rejection_rate = rejected_count / len(unanswerable_questions) if unanswerable_questions else 0.0
 
     print("\n" + "=" * 80)
@@ -383,11 +423,16 @@ def test_end_to_end_answer_quality(rag_environment, evaluation_dataset):
     print(f"Unanswerable: {len(unanswerable_questions)}")
     print(f"Non-rejection rate: {non_rejection_rate:.4f} ({answered_count}/{len(answerable_questions)})")
     print(f"Token recall: {token_recall:.4f} ({lexical_points_matched}/{total_expected_tokens} tokens)")
+    print(
+        f"Answer-Question Relevance: {answer_question_relevance:.4f} "
+        f"({answer_relevance_count} answers)"
+    )
     print(f"Semantic answer point recall: {semantic_point_recall:.4f} ({semantic_points_matched}/{total_expected_points} points)")
     print(
-        f"Semantic context coverage: {context_recall:.4f} "
+        f"NLI context coverage: {context_recall:.4f} "
         f"({context_points_matched}/{total_context_points} points)"
     )
+    print(f"Coverage gap: {context_recall - semantic_point_recall:.4f}")
     print(
         f"Retrieved evidence recall: {retrieved_evidence_recall:.4f} "
         f"({retrieved_evidence_matched}/{total_expected_evidence} evidence items)"
@@ -404,10 +449,7 @@ def test_end_to_end_answer_quality(rag_environment, evaluation_dataset):
 
     assert len(question_results) == len(questions)
     assert all(isinstance(result, dict) for result in question_results)
-
-
-
-
-
-
-
+    assert semantic_point_recall >= 0.70
+    assert context_recall >= 0.85
+    assert context_recall - semantic_point_recall <= 0.15
+    assert rejection_rate == 1.0

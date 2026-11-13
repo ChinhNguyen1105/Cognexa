@@ -28,3 +28,4 @@ build/
 dist/
 # Generated vector database
 data/vector_store/
+tmp_eval/

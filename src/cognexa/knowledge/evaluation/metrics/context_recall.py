@@ -7,22 +7,37 @@ def _normalize(text: str) -> str:
     return TextPreprocessor.normalize(text)
 
 
+def _coerce_text(value) -> str:
+    if isinstance(value, str):
+        return value
+
+    if value is None:
+        return ""
+
+    if isinstance(value, Mapping):
+        for key in ("content", "page_content", "text"):
+            content = value.get(key)
+            if isinstance(content, str):
+                return content
+        return ""
+
+    for attr in ("content", "page_content", "text"):
+        content = getattr(value, attr, None)
+        if isinstance(content, str):
+            return content
+
+    for attr in ("chunk", "document"):
+        nested = getattr(value, attr, None)
+        if nested is not None:
+            content = _coerce_text(nested)
+            if content:
+                return content
+
+    return ""
+
+
 def _document_content(document) -> str:
-    if isinstance(document, str):
-        return document
-
-    if isinstance(document, Mapping):
-        return (
-            document.get("content")
-            or document.get("page_content")
-            or ""
-        )
-
-    return (
-        getattr(document, "page_content", "")
-        or getattr(document, "content", "")
-        or ""
-    )
+    return _coerce_text(document)
 
 
 def calculate_evidence_recall(

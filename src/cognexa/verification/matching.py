@@ -2,17 +2,37 @@
 
 
 class EvidenceMatcher:
+    STOPWORDS = {
+        "a", "an", "the",
+        "is", "am", "are", "be", "been", "being",
+        "do", "does", "did",
+        "have", "has", "had",
+        "can", "could", "may", "might", "must",
+        "shall", "should", "will", "would",
+        "of", "at", "by", "for", "from",
+        "in", "into", "on", "onto", "to", "with",
+        "about", "after", "before", "between",
+        "and", "or", "but", "if", "because",
+        "as", "than", "that", "this", "these", "those",
+        "it", "its", "they", "them", "their",
+        "he", "she", "we", "you", "i",
+        "not", "no",
+    }
+
     def __init__(self):
         self.preprocessor = TextPreprocessor()
 
-    def exact_match(
-        self,
-        sentence: str,
-        evidence: list[str],
-    ) -> bool:
-        normalized_sentence = self.preprocessor.normalize(
-            sentence
-        )
+    def _content_tokens(self, text: str) -> set[str]:
+        normalized = self.preprocessor.normalize(text)
+
+        return {
+            token
+            for token in normalized.split()
+            if token not in self.STOPWORDS
+        }
+
+    def exact_match(self, sentence: str, evidence: list[str]) -> bool:
+        normalized_sentence = self.preprocessor.normalize(sentence)
 
         if not normalized_sentence:
             return False
@@ -28,9 +48,7 @@ class EvidenceMatcher:
         sentence: str,
         evidence: list[str],
     ) -> list[str]:
-        normalized_sentence = self.preprocessor.normalize(
-            sentence
-        )
+        normalized_sentence = self.preprocessor.normalize(sentence)
 
         if not normalized_sentence:
             return []
@@ -46,16 +64,12 @@ class EvidenceMatcher:
         self,
         sentence: str,
         evidence: list[str],
-        min_overlap: float = 0.3,
+        min_overlap: float = 0.15,
     ) -> list[str]:
         if not 0.0 <= min_overlap <= 1.0:
-            raise ValueError(
-                "min_overlap must be between 0 and 1."
-            )
+            raise ValueError("min_overlap must be between 0 and 1.")
 
-        sentence_tokens = set(
-            self.preprocessor.normalize(sentence).split()
-        )
+        sentence_tokens = self._content_tokens(sentence)
 
         if not sentence_tokens:
             return []
@@ -66,9 +80,7 @@ class EvidenceMatcher:
             if not isinstance(item, str):
                 continue
 
-            evidence_tokens = set(
-                self.preprocessor.normalize(item).split()
-            )
+            evidence_tokens = self._content_tokens(item)
 
             if not evidence_tokens:
                 continue
@@ -81,9 +93,9 @@ class EvidenceMatcher:
             if overlap >= min_overlap:
                 matches.append((overlap, position, item))
 
-        # Best overlap first (ties keep document order), so that a caller
-        # truncating to candidate_limit keeps the most relevant evidence
-        # instead of simply the earliest sentences.
         matches.sort(key=lambda match: (-match[0], match[1]))
 
-        return [item for _, _, item in matches]
+        return [
+            item
+            for _, _, item in matches
+        ]

@@ -294,6 +294,18 @@ Output:
   ]
 }
 
+PREVENTION: Generate solution-oriented sub-questions.
+- Generate at least two questions about different solution approaches.
+- Each question must investigate how a solution reduces, prevents, mitigates, or controls the problem.
+- Do not generate definition-only or cause-only questions.
+- Use meaningful, distinct aspect labels.
+
+LIST: Divide the requested factors into distinct categories.
+- Generate at least two questions covering different categories.
+- Each question must focus on a separate category.
+- Avoid repeating the same category.
+- Preserve the original subject and scope.
+
 OUTPUT FORMAT:
 
 Return ONLY a valid JSON object using this structure:
@@ -471,7 +483,50 @@ STRICT OUTPUT CONSTRAINTS:
                 sub_questions,
             )
 
+        if question_type == "prevention":
+            return cls._valid_prevention(sub_questions)
+
+        if question_type == "list":
+            return cls._valid_list(sub_questions)
+
         return True
+
+    @staticmethod
+    def _valid_prevention(
+        sub_questions: list[dict[str, str]],
+    ) -> bool:
+        """Ensure prevention questions cover distinct solution approaches."""
+        solution_patterns = [
+            r"\breduc(?:e|es|ing|ed)\b",
+            r"\bminimiz(?:e|es|ing|ed)\b",
+            r"\bmitigat(?:e|es|ing|ed|ion)\b",
+            r"\bprevent(?:s|ing|ed|ion)?\b",
+            r"\bavoid(?:s|ing|ed)?\b",
+            r"\bcontrol(?:s|ling|led)?\b",
+            r"\blimit(?:s|ing|ed)?\b",
+        ]
+
+        aspects = {item["aspect"] for item in sub_questions}
+        if len(aspects) < 2:
+            return False
+
+        for item in sub_questions:
+            question = item["question"].casefold()
+            if not any(
+                re.search(pattern, question)
+                for pattern in solution_patterns
+            ):
+                return False
+
+        return True
+
+    @staticmethod
+    def _valid_list(
+        sub_questions: list[dict[str, str]],
+    ) -> bool:
+        """Ensure list questions cover at least two distinct categories."""
+        aspects = {item["aspect"] for item in sub_questions}
+        return len(aspects) >= 2
 
     @staticmethod
     def _valid_comparison(

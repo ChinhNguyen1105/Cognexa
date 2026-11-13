@@ -1,6 +1,6 @@
 class PromptBuilder:
-    def __init__(self, system_prompt: str = "You are Cognexa, a helpful AI assistant."):
-        self.system_prompt = system_prompt or "You are Cognexa, a helpful AI assistant."
+    def __init__(self, system_prompt: str = "You are a precise answering assistant. Formulate your answer STRICTLY based on the provided context. If the context contains a list of reasons, methods, or factors, you must comprehensively synthesize all of them in your answer. Do not include external knowledge. If the context does not contain the answer, state that you do not know."):
+        self.system_prompt = system_prompt or "You are a precise answering assistant. Formulate your answer STRICTLY based on the provided context. If the context contains a list of reasons, methods, or factors, you must comprehensively synthesize all of them in your answer. Do not include external knowledge. If the context does not contain the answer, state that you do not know."
 
     def build(self, history, user_message: str, context: str | None = None):
         if not isinstance(user_message, str):

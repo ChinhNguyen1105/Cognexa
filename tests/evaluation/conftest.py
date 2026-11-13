@@ -55,6 +55,46 @@ class DeterministicQuestionDecomposer:
         return [question]
 
 
+class DeterministicPromptBuilder:
+    """Small prompt builder used by evaluation fixtures."""
+
+    def build(self, history, user_message: str, context: str | None = None):
+        if not isinstance(user_message, str):
+            raise TypeError("user_message must be a string.")
+
+        system_prompt = "You are Cognexa, a helpful AI assistant."
+        if context and isinstance(context, str) and context.strip():
+            system_prompt = (
+                f"{system_prompt}\n\n"
+                "Retrieved context:\n"
+                f"{context}\n\n"
+                "Use the retrieved context to answer the user and clearly state any uncertainty."
+            )
+
+        messages = [{"role": "system", "content": system_prompt}]
+        for entry in history or []:
+            messages.append({
+                "role": entry.get("role", "user"),
+                "content": entry.get("content", ""),
+            })
+        messages.append({"role": "user", "content": user_message})
+        return messages
+
+
+class DeterministicGenerator:
+    """Stable generator for deterministic evaluation tests."""
+
+    def generate(self, messages, *, max_new_tokens: int | None = None) -> str:
+        prompt_text = "\n".join(
+            f"{item.get('role', 'user')}: {item.get('content', '')}"
+            for item in messages or []
+        )
+        return (
+            "Based on the retrieved context, I provide the most relevant answer available. "
+            f"Prompt summary: {prompt_text[:180]}"
+        )
+
+
 @pytest.fixture(scope="session")
 def evaluation_dataset():
     import json
@@ -149,13 +189,37 @@ def rag_environment(tmp_path_factory, evaluation_document):
         min_candidates=2,
         max_candidates=24,
         score_gap_threshold=3.0,
-        min_score=0.0,
+        min_score=None,
     )
 
     answer_selector = AnswerSelector(
         answer_verifier=answer_verifier,
         max_sentences=8,
         redundancy_threshold=0.85,
+    )
+
+    generator = DeterministicGenerator()
+    prompt_builder = DeterministicPromptBuilder()
+
+    candidate_reranker = CrossEncoderCandidateReranker(
+        scorer=reranker,
+    )
+
+    adaptive_retriever = AdaptiveRetriever(
+        dense_retriever=DenseRetriever(
+            embedder=embedder,
+            vector_store=vector_store,
+        ),
+        sparse_retriever=sparse_retriever,
+        fusion=ReciprocalRankFusion(),
+        reranker=candidate_reranker,
+        expander=EvidenceExpander(
+            vector_store=vector_store,
+        ),
+        coverage_analyzer=CoverageAnalyzer(),
+        sufficiency_checker=SufficiencyChecker(min_coverage=0.7),
+        top_k=5,
+        max_iterations=3,
     )
 
     return SimpleNamespace(
@@ -171,6 +235,10 @@ def rag_environment(tmp_path_factory, evaluation_document):
         answer_verifier=answer_verifier,
         answer_extractor=answer_extractor,
         answer_selector=answer_selector,
+        generator=generator,
+        prompt_builder=prompt_builder,
+        adaptive_retriever=adaptive_retriever,
+        query_plan_builder=QueryPlanBuilder(),
         ingestion_result=ingestion_result,
         temporary_directory=temporary_directory,
     )

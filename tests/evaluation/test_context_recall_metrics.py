@@ -66,6 +66,56 @@ def test_retrieved_evidence_recall_supports_document_objects():
     assert (matched, total, recall) == (1, 1, 1.0)
 
 
+def test_retrieved_evidence_recall_supports_evidence_like_objects():
+    documents = [
+        SimpleNamespace(
+            document=SimpleNamespace(
+                chunk=SimpleNamespace(content="Evidence text from nested chunk")
+            )
+        )
+    ]
+
+    matched, total, recall = calculate_retrieved_evidence_recall(
+        documents=documents,
+        expected_evidence=["Evidence text from nested chunk"],
+    )
+
+    assert (matched, total, recall) == (1, 1, 1.0)
+
+
+def test_retrieved_evidence_recall_handles_missing_or_empty_content():
+    documents = [
+        {"content": ""},
+        SimpleNamespace(document=None),
+        SimpleNamespace(),
+        None,
+    ]
+
+    matched, total, recall = calculate_retrieved_evidence_recall(
+        documents=documents,
+        expected_evidence=["anything"],
+    )
+
+    assert (matched, total, recall) == (0, 1, 0.0)
+
+
+def test_retrieved_evidence_recall_supports_string_and_dict_content():
+    documents = [
+        "A model can overfit when it memorizes training examples.",
+        {"content": "Regularization reduces overfitting."},
+    ]
+
+    matched, total, recall = calculate_retrieved_evidence_recall(
+        documents=documents,
+        expected_evidence=[
+            "memorizes training examples",
+            "Regularization reduces overfitting",
+        ],
+    )
+
+    assert (matched, total, recall) == (2, 2, 1.0)
+
+
 def test_unmatched_evidence_returns_zero_recall():
     matched, total, recall = calculate_evidence_recall(
         contexts=["Python is a programming language."],

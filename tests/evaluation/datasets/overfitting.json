@@ -1,7 +1,6 @@
-﻿
-{
+﻿{
   "dataset_name": "overfitting_rag_evaluation",
-  "version": "1.1",
+  "version": "1.2",
   "source": "overfitting.txt",
   "questions": [
     {
@@ -41,8 +40,8 @@
         "performance on validation data becomes worse"
       ],
       "expected_answer_points": [
-        "Training performance may continue improving when training for too many epochs.",
-        "Validation performance may become worse when training for too many epochs."
+        "As training continues, the model may keep improving on the training set.",
+        "Performance on validation data may become worse as training continues."
       ],
       "answerable": true
     },
@@ -60,7 +59,7 @@
         "Data leakage can contribute to overfitting.",
         "Noisy labels can contribute to overfitting.",
         "Insufficient regularization can contribute to overfitting.",
-        "A poorly designed validation process can contribute to overfitting."
+        "A poorly designed validation process can make overfitting difficult to detect."
       ],
       "answerable": true
     },
@@ -113,7 +112,7 @@
       "expected_answer_points": [
         "An overfitted model performs well on training data but poorly on unseen data.",
         "An underfitted model performs poorly on both training data and unseen data.",
-        "Underfitting occurs when a model is too simple or insufficiently trained."
+        "An underfitted model is too simple or insufficiently trained."
       ],
       "answerable": true
     },
@@ -122,15 +121,12 @@
       "question": "What is the relationship between overfitting and underfitting?",
       "type": "relationship",
       "expected_evidence": [
-        "Overfitting",
-        "Underfitting",
-        "training data",
-        "unseen data"
+        "perform poorly on unseen data",
+        "performs poorly on both training and unseen data"
       ],
       "expected_answer_points": [
-        "Overfitting and underfitting are both problems in model learning.",
-        "Overfitting results in good performance on training data but poor performance on unseen data.",
-        "Underfitting results in poor performance on both training data and unseen data."
+        "An overfitted model performs well on training data but poorly on unseen data.",
+        "An underfitted model performs poorly on both training data and unseen data."
       ],
       "answerable": true
     },

@@ -389,3 +389,210 @@ def test_jaccard_penalty_reduces_repetitive_sentence_score():
 
     assert adjustment == pytest.approx(-0.35)
 
+
+def test_neighbor_expansion_includes_relevant_neighbor_below_min_score():
+    seed = (
+        "L2 regularization penalizes large model weights "
+        "to control overfitting."
+    )
+    neighbor = (
+        "L2 regularization is a regularization method "
+        "that helps control overfitting."
+    )
+    unrelated = "The weather is sunny and warm today."
+
+    context = f"{neighbor} {seed} {unrelated}"
+
+    reranker = FakeReranker({
+        seed: 0.9,
+        neighbor: 0.1,
+        unrelated: -0.5,
+    })
+
+    extractor = AnswerExtractor(
+        reranker=reranker,
+        min_score=0.5,
+        neighbor_window=1,
+        neighbor_similarity_threshold=0.15,
+    )
+
+    result = extractor.extract_candidates(
+        question="How does L2 regularization control overfitting?",
+        context=context,
+    )
+
+    result_sentences = [item["sentence"] for item in result]
+
+    assert seed in result_sentences
+    assert neighbor in result_sentences
+    assert all(
+        item.get("is_neighbor", False)
+        for item in result
+        if item["sentence"] == neighbor
+    )
+
+
+def test_neighbor_expansion_rejects_unrelated_sentence():
+    seed = "L2 regularization penalizes large model weights."
+    unrelated = "The weather is sunny and warm today."
+
+    context = f"{seed} {unrelated}"
+
+    reranker = FakeReranker({
+        seed: 0.9,
+        unrelated: 0.1,
+    })
+
+    extractor = AnswerExtractor(
+        reranker=reranker,
+        min_score=0.5,
+        neighbor_window=1,
+        neighbor_similarity_threshold=0.15,
+    )
+
+    result = extractor.extract_candidates(
+        question="What does L2 regularization do?",
+        context=context,
+    )
+
+    result_sentences = [item["sentence"] for item in result]
+
+    assert seed in result_sentences
+    assert unrelated not in result_sentences
+
+
+def test_neighbor_expansion_does_not_add_duplicate_candidates():
+    first = (
+        "Regularization helps control overfitting "
+        "during model training."
+    )
+    middle = (
+        "Regularization methods help control overfitting "
+        "in machine learning models."
+    )
+    last = (
+        "Regularization techniques reduce overfitting "
+        "during machine learning training."
+    )
+
+    context = f"{first} {middle} {last}"
+
+    reranker = FakeReranker({
+        first: 0.9,
+        middle: 0.1,
+        last: 0.8,
+    })
+
+    extractor = AnswerExtractor(
+        reranker=reranker,
+        min_score=0.5,
+        neighbor_window=1,
+        neighbor_similarity_threshold=0.15,
+    )
+
+    result = extractor.extract_candidates(
+        question="How does regularization reduce overfitting?",
+        context=context,
+    )
+
+    result_sentences = [item["sentence"] for item in result]
+
+    assert result_sentences.count(middle) == 1
+    assert len(result_sentences) == len(set(result_sentences))
+
+
+def test_diversity_ranking_penalizes_redundant_information():
+    first = (
+        "Overfitting occurs when a model learns training data "
+        "too closely, including noise."
+    )
+    repetitive = (
+        "Overfitting occurs when a model learns training data "
+        "too closely, including noise and accidental patterns."
+    )
+    informative = (
+        "An overfitted model performs well on training data "
+        "but poorly on unseen data."
+    )
+
+    candidates = [
+        {
+            "sentence": first,
+            "score": 5.0,
+            "ranking_score": 5.0,
+        },
+        {
+            "sentence": repetitive,
+            "score": 4.9,
+            "ranking_score": 4.9,
+        },
+        {
+            "sentence": informative,
+            "score": 4.8,
+            "ranking_score": 4.8,
+        },
+    ]
+
+    result = AnswerExtractor._apply_diversity_ranking(candidates)
+
+    assert result[0]["sentence"] == first
+    assert result[1]["sentence"] == informative
+
+
+def test_diversity_ranking_rewards_novel_information():
+    first = "Overfitting occurs when a model learns training data too closely."
+    second = (
+        "An overfitted model performs well on training data "
+        "but poorly on unseen data."
+    )
+
+    candidates = [
+        {
+            "sentence": first,
+            "score": 5.0,
+            "ranking_score": 5.0,
+        },
+        {
+            "sentence": second,
+            "score": 4.9,
+            "ranking_score": 4.9,
+        },
+    ]
+
+    result = AnswerExtractor._apply_diversity_ranking(candidates)
+
+    assert result[0]["sentence"] == first
+    assert result[1]["sentence"] == second
+    assert result[1]["diversity_score"] > result[1]["ranking_score"]
+
+
+def test_extract_candidates_keeps_multi_point_prevention_evidence_under_large_gap():
+    sentences = [
+        "Regularization techniques help reduce overfitting by discouraging overly complex models.",
+        "Common approaches include L1 regularization, L2 regularization, dropout, and early stopping.",
+        "Overfitting reduces the generalization ability of a model.",
+    ]
+    reranker = FakeReranker(
+        scores={
+            sentences[0]: 5.7,
+            sentences[1]: -4.9,
+            sentences[2]: 1.9,
+        }
+    )
+
+    extractor = AnswerExtractor(
+        reranker=reranker,
+        min_candidates=2,
+        max_candidates=10,
+        score_gap_threshold=3.0,
+    )
+
+    result = extractor.extract_candidates(
+        question="How can overfitting be reduced?",
+        context=" ".join(sentences),
+        aspect_queries=[{"aspect": "prevention", "question": "How can overfitting be reduced?"}],
+    )
+
+    texts = [item["sentence"] for item in result]
+    assert sentences[0] in texts
+    assert sentences[1] in texts

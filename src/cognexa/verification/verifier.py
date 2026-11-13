@@ -1,4 +1,4 @@
-from cognexa.verification.decision import VerificationDecision
+﻿from cognexa.verification.decision import VerificationDecision
 from cognexa.verification.matching import EvidenceMatcher
 from cognexa.verification.nli_model import NLIModel
 from cognexa.verification.preprocessing import TextPreprocessor
@@ -10,13 +10,22 @@ from cognexa.verification.schemas import (
 
 
 class AnswerVerifier:
+    REFERENCE_CUES = {
+        "it", "its", "they", "them", "their",
+        "this", "these", "those",
+        "he", "she", "his", "her",
+        "one", "ones", "both",
+        "former", "latter",
+    }
+
     def __init__(
         self,
         nli_model: NLIModel | None = None,
         matcher: EvidenceMatcher | None = None,
         decision: VerificationDecision | None = None,
-        candidate_limit: int = 5,
-        min_overlap: float = 0.3,
+        candidate_limit: int = 15,
+        min_overlap: float = 0.15,
+        max_window_sentences: int = 3,
     ):
         if candidate_limit <= 0:
             raise ValueError("candidate_limit must be greater than 0.")
@@ -24,14 +33,16 @@ class AnswerVerifier:
         if not 0.0 <= min_overlap <= 1.0:
             raise ValueError("min_overlap must be between 0 and 1.")
 
-        # The NLI model is loaded lazily so constructing an AnswerVerifier
-        # (for example as the Assistant default) does not load a large model.
+        if max_window_sentences <= 0:
+            raise ValueError("max_window_sentences must be greater than 0.")
+
         self._nli_model = nli_model
         self.matcher = matcher or EvidenceMatcher()
         self.decision = decision or VerificationDecision()
         self.preprocessor = TextPreprocessor()
         self.candidate_limit = candidate_limit
         self.min_overlap = min_overlap
+        self.max_window_sentences = max_window_sentences
 
     @property
     def nli_model(self) -> NLIModel:
@@ -48,8 +59,6 @@ class AnswerVerifier:
         sentences = []
 
         for item in evidence:
-            # split_evidence also splits on line breaks and drops
-            # "[Document N | ...]" headers, matching AnswerExtractor units.
             sentences.extend(
                 self.preprocessor.split_evidence(item)
             )
@@ -65,6 +74,92 @@ class AnswerVerifier:
                 unique_sentences.append(sentence)
 
         return unique_sentences
+
+    def _needs_context_window(self, sentence: str) -> bool:
+        tokens = self.matcher._content_tokens(sentence)
+        return bool(tokens & self.REFERENCE_CUES)
+
+    def _build_premise_window(
+        self,
+        candidate: str,
+        evidence_sentences: list[str],
+    ) -> str:
+        normalized_candidate = self.preprocessor.normalize(candidate)
+
+        candidate_index = next(
+            (
+                index
+                for index, sentence in enumerate(evidence_sentences)
+                if self.preprocessor.normalize(sentence)
+                == normalized_candidate
+            ),
+            None,
+        )
+
+        if candidate_index is None:
+            return candidate
+
+        start = max(0, candidate_index - 1)
+        end = min(len(evidence_sentences), candidate_index + 2)
+
+        return " ".join(evidence_sentences[start:end])
+
+    def _candidate_premise_for(self, candidate: str, evidence_sentences: list[str]) -> str:
+        if not candidate:
+            return candidate
+
+        normalized_candidate = self.preprocessor.normalize(candidate)
+        candidate_index = next(
+            (
+                index
+                for index, sentence in enumerate(evidence_sentences)
+                if self.preprocessor.normalize(sentence) == normalized_candidate
+            ),
+            None,
+        )
+
+        if candidate_index is None:
+            return candidate
+
+        window_size = min(self.max_window_sentences, max(1, len(evidence_sentences) - candidate_index))
+        start = max(0, candidate_index - 1)
+        end = min(len(evidence_sentences), candidate_index + window_size)
+        premise = " ".join(evidence_sentences[start:end])
+        if len(premise) <= 220:
+            return premise
+        return candidate
+
+    def _filter_candidates(
+        self,
+        sentence: str,
+        candidates: list[str],
+    ) -> list[str]:
+        sentence_tokens = self.matcher._content_tokens(sentence)
+
+        if not sentence_tokens or not candidates:
+            return []
+
+        scored = []
+
+        for candidate in candidates:
+            candidate_tokens = self.matcher._content_tokens(candidate)
+
+            overlap = (
+                len(sentence_tokens & candidate_tokens)
+                / len(sentence_tokens)
+            )
+
+            scored.append((candidate, overlap))
+
+        best_overlap = max(score for _, score in scored)
+
+        threshold = best_overlap * 0.75
+
+        return [
+            candidate
+            for candidate, score in scored
+            if score >= threshold
+        ][:self.candidate_limit]
 
     def verify(
         self,
@@ -110,17 +205,32 @@ class AnswerVerifier:
 
             if exact_matches:
                 candidates = exact_matches
+                exact_match = True
             else:
-                candidates = self.matcher.find_candidate_evidence(
+                raw_candidates = self.matcher.find_candidate_evidence(
                     sentence,
                     evidence_sentences,
                     min_overlap=self.min_overlap,
-                )[:self.candidate_limit]
+                )
+
+                candidates = self._filter_candidates(
+                    sentence,
+                    raw_candidates,
+                )
+                exact_match = False
 
             sentence_candidates.append(candidates)
 
             for candidate in candidates:
-                premises.append(candidate)
+                if exact_match or not self._needs_context_window(candidate):
+                    premise = candidate
+                else:
+                    premise = self._candidate_premise_for(
+                        candidate,
+                        evidence_sentences,
+                    )
+
+                premises.append(premise)
                 hypotheses.append(sentence)
 
         scores = (

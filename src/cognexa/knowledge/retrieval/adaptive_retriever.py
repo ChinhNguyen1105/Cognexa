@@ -57,9 +57,15 @@ class AdaptiveRetriever:
         sufficiency_checker: SufficiencyCheckerProtocol,
         top_k: int = 5,
         max_iterations: int = 3,
+        candidate_top_k: int | None = None,
+        rerank_top_k: int | None = None,
     ) -> None:
         self._validate_positive_int(top_k, "top_k")
         self._validate_positive_int(max_iterations, "max_iterations")
+        if candidate_top_k is not None:
+            self._validate_positive_int(candidate_top_k, "candidate_top_k")
+        if rerank_top_k is not None:
+            self._validate_positive_int(rerank_top_k, "rerank_top_k")
 
         self.dense_retriever = dense_retriever
         self.sparse_retriever = sparse_retriever
@@ -71,6 +77,8 @@ class AdaptiveRetriever:
 
         self.top_k = top_k
         self.max_iterations = max_iterations
+        self.candidate_top_k = candidate_top_k or max(15, top_k)
+        self.rerank_top_k = rerank_top_k or min(5, self.candidate_top_k)
 
     @staticmethod
     def _validate_positive_int(value: int, name: str) -> None:
@@ -181,12 +189,12 @@ class AdaptiveRetriever:
         for query in query_plan.retrieval_queries:
             dense_run = self.dense_retriever.retrieve(
                 query=query,
-                top_k=top_k,
+                top_k=max(self.candidate_top_k, top_k),
             )
 
             sparse_run = self.sparse_retriever.retrieve(
                 query=query,
-                top_k=top_k,
+                top_k=max(self.candidate_top_k, top_k),
             )
 
             fused_candidates = self.fusion.fuse(
@@ -196,7 +204,7 @@ class AdaptiveRetriever:
             ranked_candidates = self.reranker.rerank(
                 query=query,
                 candidates=fused_candidates,
-                top_k=top_k,
+                top_k=min(self.rerank_top_k, len(fused_candidates) or self.rerank_top_k),
             )
 
             expanded_evidence = self.expander.expand(

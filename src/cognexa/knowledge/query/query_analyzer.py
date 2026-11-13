@@ -1,4 +1,5 @@
-﻿import re
+﻿
+import re
 
 
 class QueryAnalyzer:
@@ -11,6 +12,8 @@ class QueryAnalyzer:
         "CAUSE_EFFECT": "cause_effect",
         "MULTI_ASPECT": "multi_aspect",
         "RELATIONSHIP": "relationship",
+        "PREVENTION": "prevention",
+        "LIST": "list",
         "SIMPLE": "simple",
     }
 
@@ -58,6 +61,19 @@ class QueryAnalyzer:
             r"\bliên\s+hệ\s+giữa\b",
             r"\bgiữa\s+.*\s+và\s+.*\b",
         ],
+        "prevention": [
+            r"\bhow\s+can\s+.*\s+(?:be\s+)?(?:reduced|minimized|mitigated|prevented|avoided)\b",
+            r"\bhow\s+to\s+(?:reduce|minimize|mitigate|prevent|avoid)\b",
+            r"\bhow\s+can\s+(?:we\s+)?(?:reduce|minimize|mitigate|prevent|avoid)\b",
+            r"\bwhat\s+(?:methods?|ways?|techniques?|strategies?|approaches?)\s+can\s+(?:we\s+)?(?:reduce|minimize|mitigate|prevent|avoid)\b",
+            r"\bwhat\s+(?:methods?|ways?|techniques?|strategies?|approaches?)\s+can\s+.*\s+(?:reduce|minimize|mitigate|prevent|avoid)\b",
+            r"\b(?:methods?|ways?|techniques?|strategies?|approaches?)\s+to\s+(?:reduce|minimize|mitigate|prevent|avoid)\b",
+        ],
+        "list": [
+            r"\bwhat\s+are\s+(?:the\s+)?(?:other\s+)?(?:main\s+|common\s+|key\s+)?(?:factors?|causes?|consequences?|effects?|methods?|ways?|techniques?|strategies?|approaches?|types?|examples?)\b",
+            r"\blist\s+(?:the\s+)?(?:other\s+)?(?:main\s+|common\s+|key\s+)?(?:factors?|causes?|consequences?|effects?|methods?|ways?|techniques?|strategies?|approaches?|types?|examples?)\b",
+            r"\bwhat\s+other\s+(?:factors?|causes?|methods?|ways?|techniques?|strategies?|approaches?)\b",
+        ],
     }
 
     def classify(self, query: str) -> str:
@@ -65,8 +81,8 @@ class QueryAnalyzer:
         Classify a question using lightweight pattern matching.
 
         Returns:
-            comparison, cause_effect, multi_aspect,
-            relationship, or simple.
+            comparison, cause_effect, relationship, multi_aspect,
+            prevention, list, or simple.
         """
         if not isinstance(query, str):
             raise TypeError("query must be a string.")
@@ -81,6 +97,8 @@ class QueryAnalyzer:
             "cause_effect",
             "relationship",
             "multi_aspect",
+            "prevention",
+            "list",
         ):
             patterns = self.CLASSIFICATION_PATTERNS[question_type]
 
@@ -102,5 +120,3 @@ class QueryAnalyzer:
         This is a heuristic, not a semantic classifier.
         """
         return self.classify(query) != "simple"
-
-

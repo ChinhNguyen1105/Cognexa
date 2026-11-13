@@ -228,7 +228,7 @@ from cognexa.verification.schemas import (
 )
 
 
-def test_conflicting_evidence_returns_uncertain():
+def test_different_candidates_with_conflicting_signals_are_not_uncertain():
     decision = VerificationDecision()
 
     result = decision.evaluate_candidates(
@@ -245,6 +245,46 @@ def test_conflicting_evidence_returns_uncertain():
         ],
     )
 
+    assert result.status == SentenceStatus.SUPPORTED
+    assert result.evidence == ["Python is a compiled language."]
+    assert result.reason == "Evidence entails the answer."
+
+
+def test_same_candidate_with_entailment_and_contradiction_is_uncertain():
+    decision = VerificationDecision()
+
+    result = decision.evaluate_candidates(
+        sentence="Python is a compiled language.",
+        candidates=[
+            (
+                "Conflicting statement.",
+                NLIScores(0.90, 0.85, 0.05),
+            ),
+        ],
+    )
+
     assert result.status == SentenceStatus.UNCERTAIN
-    assert len(result.evidence) == 2
-    assert result.reason == "Conflicting evidence found."
+    assert result.evidence == ["Conflicting statement."]
+
+def test_different_candidates_with_conflicting_signals_are_not_uncertain():
+    decision = VerificationDecision()
+
+    result = decision.evaluate_candidates(
+        sentence="Python is a compiled language.",
+        candidates=[
+            (
+                "Python is a compiled language.",
+                NLIScores(0.95, 0.02, 0.03),
+            ),
+            (
+                "Python is an interpreted language.",
+                NLIScores(0.02, 0.95, 0.03),
+            ),
+        ],
+    )
+
+    assert result.status == SentenceStatus.SUPPORTED
+    assert result.evidence == [
+        "Python is a compiled language."
+    ]
+    assert result.reason == "Evidence entails the answer."

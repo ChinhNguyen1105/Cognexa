@@ -75,11 +75,108 @@ class AnswerSelector:
         return AnswerSelector._jaccard_similarity(left, right) >= threshold
 
     @staticmethod
+    def _new_info_ratio(sentence: str, reference: str) -> float:
+        sentence_tokens = AnswerSelector._normalize_tokens(sentence)
+        reference_tokens = AnswerSelector._normalize_tokens(reference)
+        if not sentence_tokens:
+            return 0.0
+        if not reference_tokens:
+            return 1.0
+        new_tokens = sentence_tokens - reference_tokens
+        return len(new_tokens) / len(sentence_tokens)
+
+    @staticmethod
+    def _should_keep_sentence(sentence: str) -> bool:
+        tokens = AnswerSelector._normalize_tokens(sentence)
+        if not tokens:
+            return False
+        if len(tokens) <= 2:
+            return False
+        content_tokens = {token for token in tokens if len(token) > 2}
+        return bool(content_tokens)
+
+    @staticmethod
+    def _looks_like_continuation(sentence: str) -> bool:
+        text = " ".join(re.findall(r"[A-Za-z0-9]+", (sentence or "").casefold()))
+        if not text:
+            return False
+        starters = (
+            "common approaches include",
+            "for example",
+            "this",
+            "these",
+            "those",
+            "as ",
+            "in addition",
+            "furthermore",
+            "moreover",
+            "another",
+            "also",
+            "it",
+        )
+        return any(text.startswith(starter) for starter in starters)
+
+    @staticmethod
     def _clean_context(context: str) -> list[str]:
         if not isinstance(context, str) or not context.strip():
             return []
 
         return TextPreprocessor.split_evidence(context)
+
+    def _compose_adjacent_selection(
+        self,
+        selected: list[dict[str, Any]],
+        supported: list[dict[str, Any]],
+        evidence: list[str],
+        seen_texts: set[str],
+    ) -> None:
+        if not selected or not evidence:
+            return
+
+        by_normalized = {
+            self._normalized_text(item["sentence"]): item
+            for item in supported
+            if isinstance(item.get("sentence"), str)
+        }
+
+        for item in list(selected):
+            sentence = item["sentence"]
+            normalized = self._normalized_text(sentence)
+            if not normalized:
+                continue
+
+            match_index = next(
+                (
+                    idx
+                    for idx, candidate in enumerate(evidence)
+                    if self._normalized_text(candidate) == normalized
+                ),
+                None,
+            )
+            if match_index is None or match_index + 1 >= len(evidence):
+                continue
+
+            next_sentence = evidence[match_index + 1]
+            next_norm = self._normalized_text(next_sentence)
+            if not next_norm or next_norm in seen_texts:
+                continue
+
+            if not self._looks_like_continuation(next_sentence):
+                continue
+
+            next_item = by_normalized.get(next_norm)
+            if next_item is None:
+                continue
+
+            if any(
+                self._is_redundant(next_item["sentence"], existing["sentence"], self.redundancy_threshold)
+                for existing in selected
+            ):
+                continue
+
+            selected.append(next_item)
+            seen_texts.add(next_item["sentence"])
+
     def select(self, candidates, context: str) -> list[str]:
         """Compatibility wrapper returning selected sentence texts."""
         result = self.select_detailed(
@@ -87,6 +184,7 @@ class AnswerSelector:
             context=context,
         )
         return result.texts
+
     def select_detailed(self, candidates, context: str) -> SelectionResult:
         if not candidates:
             return SelectionResult()
@@ -112,6 +210,10 @@ class AnswerSelector:
 
             if not isinstance(sentence, str) or not sentence.strip():
                 continue
+
+            if not self._should_keep_sentence(sentence):
+                continue
+
             normalized.append({
                 "sentence": sentence,
                 "score": float(score),
@@ -202,6 +304,10 @@ class AnswerSelector:
                 continue
             selected.append(item)
             seen_texts.add(text)
+
+        self._compose_adjacent_selection(selected, supported, evidence, seen_texts)
+        if len(selected) > self.max_sentences:
+            selected = selected[: self.max_sentences]
 
         full_texts = [item["sentence"] for item in selected]
         uncovered = sorted(all_aspects - selected_aspects)

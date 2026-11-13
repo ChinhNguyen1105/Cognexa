@@ -338,4 +338,89 @@ class TestQuestionDecomposer:
         assert result[0] == question
         assert len(result) == 3
 
+    def test_prevention_missing_solution_questions_falls_back(self):
+        question = "How can overfitting be reduced?"
+
+        self.analyzer.classify.return_value = "prevention"
+        self.generator.generate.return_value = make_response(
+            make_sub_question(
+                "definition",
+                "What is overfitting in machine learning?",
+            ),
+            make_sub_question(
+                "causes",
+                "What causes overfitting in machine learning?",
+            ),
+        )
+
+        result = self.decomposer.decompose(question)
+
+        assert result == [question]
+
+    def test_valid_prevention_is_accepted(self):
+        question = "How can overfitting be reduced?"
+
+        self.analyzer.classify.return_value = "prevention"
+        self.generator.generate.return_value = make_response(
+            make_sub_question(
+                "regularization",
+                "How can regularization reduce overfitting?",
+            ),
+            make_sub_question(
+                "early_stopping",
+                "How can early stopping help prevent overfitting?",
+            ),
+        )
+
+        result = self.decomposer.decompose(question)
+
+        assert result[0] == question
+        assert len(result) == 3
+
+    def test_list_with_duplicate_aspects_falls_back(self):
+        question = (
+            "What are other factors that contribute to overfitting?"
+        )
+
+        self.analyzer.classify.return_value = "list"
+        self.generator.generate.return_value = make_response(
+            make_sub_question(
+                "data_related",
+                "How can insufficient training data contribute to overfitting?",
+            ),
+            make_sub_question(
+                "data_related",
+                "How can noisy labels contribute to overfitting?",
+            ),
+        )
+
+        result = self.decomposer.decompose(question)
+
+        assert result == [question]
+
+    def test_valid_list_is_accepted(self):
+        question = (
+            "What are other factors that contribute to overfitting?"
+        )
+
+        self.analyzer.classify.return_value = "list"
+        self.generator.generate.return_value = make_response(
+            make_sub_question(
+                "data_related",
+                "How can insufficient training data contribute to overfitting?",
+            ),
+            make_sub_question(
+                "model_related",
+                "How can excessive model complexity contribute to overfitting?",
+            ),
+            make_sub_question(
+                "training_related",
+                "How can training for too many epochs contribute to overfitting?",
+            ),
+        )
+
+        result = self.decomposer.decompose(question)
+
+        assert result[0] == question
+        assert len(result) == 4
 
